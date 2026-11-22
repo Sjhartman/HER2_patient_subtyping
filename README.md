@@ -8,7 +8,7 @@ Data are kept outside the repo in `../data_dir/`.
 
 1. **QC and normalization** — QC RNA-seq and normalize for read depth. ✅
 2. **HER2+ identification** — clinical (IHC/FISH), then multimodal (RNA, copy number, other fields); compare RNA vs DNA for predicting IHC. ✅
-3. **Subsets** — unsupervised learning (PAM on filtered, transformed RNA-seq).
+3. **Subsets** — unsupervised learning (PAM on filtered, transformed RNA-seq). ✅
 4. **Machine learning** — logistic regression (prediction), elastic net (feature selection).
 5. **Deep dive** — normal tissue comparison, pathway enrichment by tumor type vs. step 3 partitions, causal biology, pathway differences between tumor types.
 
@@ -22,6 +22,7 @@ Run from repo root (`Rscript analyses/<script>.R`); outputs go to `results/<scri
 | 1 | `analyses/01.1_plate_correction.R` | Plate/era assessment: composition, era balance, correction test (not applied) |
 | 2 | `analyses/02.0_her2_labels.R` | HER2 labels (2018-style rules on reported IHC/FISH), HER2-low, disagreements; per-tumor features incl. ESTIMATE purity score and site |
 | 2 | `analyses/02.1_rna_vs_dna.R` | Clinical exploration, label-noise check by site, RNA vs DNA (raw paired AUC), purity, CV logistic models, discordant tumors |
+| 3 | `analyses/03.0_pam_clusters.R` | PAM clusters (top 2000 genes, k by silhouette + consensus PAC), robustness, PAM50 (genefu), HER2/batch associations, HER2-low by cluster, C5 ERBB2 modes |
 
 ## Key notes for later steps
 
@@ -49,15 +50,23 @@ Run from repo root (`Rscript analyses/<script>.R`); outputs go to `results/<scri
 - ESTIMATE score (`estimate_score`, higher = lower purity) is available per tumor for Steps 3–5.
 
 **Report state (continue numbering from here)**
-- Main: Sections 1–2; Figures 1–5; Tables 1–4. Next: Figure 6, Table 5.
-- Supplement: Sections S1–S9; Figures S1–S5; Tables S1–S13. Next: S10, Figure S6, Table S14.
-- References [1]–[17], numbered by first citation in the whole document (main then supplement). After moving text, renumber by first appearance.
-- Model inline values come from `results/02.1_rna_vs_dna/model_coefficients.csv` via `b(model, term)` in the setup chunk.
+- Main: Sections 1–3; Figures 1–8; Tables 1–6. Next: Figure 9, Table 7.
+- Supplement: Sections S1–S12; Figures S1–S6; Tables S1–S19. Next: S13, Figure S7, Table S20.
+- References [1]–[20], numbered by first citation in the whole document (main then supplement). After moving text, renumber by first appearance.
+- Model inline values come from `results/02.1_rna_vs_dna/model_coefficients.csv` via `b(model, term)` in the setup chunk; Step 3 values are read from `results/03.0_pam_clusters/*.csv` in the setup chunk.
+- Figure colors (Step 3 on): PAM clusters C1–C5 = Dark2 (teal, orange, lavender, magenta, green); PAM50 = browns/yellow/plum/aqua; ERBB2 GISTIC = blue–red (NA white). Reuse these in later steps.
+
+**Step 3 findings to carry forward**
+- C5 ERBB2-low group (non-amplified, mostly HER2-low among scored HER2−, 78% ER+) is the least pure group: median ESTIMATE 675 vs 9 in ERBB2-high, with high stromal and immune markers (Table 6); ERBB2 mRNA diluted by infiltration (ρ = −0.30), but the purest third is still at luminal ERBB2 level, and IHC is mostly 1+/2+.
+- Possible amplified-but-diluted tumors in C5 ERBB2-low: TCGA-C8-A26X-01 (GISTIC 2, IHC 1+, called HER2−: re-testing candidate), TCGA-C8-A138-01 and TCGA-C8-A1HL-01 (GISTIC 2, IHC 2+, no FISH: unresolved). Not yet in the report.
 
 **Plan for Steps 3–5**
 - Step 3: PAM on uncorrected VST (refilter genes on tumors). Test clusters vs plate/era **within histology** (e.g. CMH or ductal-only). Check stability.
 - Step 4: uncorrected VST; era + histology as sensitivity covariates; no 41-level plate term.
+- Step 4 priority (PI): elastic net feature selection on **C5 (Her2) vs. the luminal clusters C1–C3** from Step 3, to find what makes C5 unique (C5 vs. all others would mostly relearn the ERBB2 amplicon/basal axis). Consider purity (ESTIMATE) as a covariate and the C5 ERBB2-low group (`c5_mode`) as a sub-analysis. Labels: `results/03.0_pam_clusters/clusters.csv`.
+- Step 3 caveats to carry: clusters are regions of a continuum (k = 5 balances silhouette and PAC); residual era association among ER+ ductal tumors (later-era ER+ more often C4); HER2-low % among scored HER2− is inflated (IHC 0 likely recorded as "Negative" without score).
 - Step 5: tumor vs normal **within patient** (paired) on uncorrected VST; never apply plate correction including normals (A089/A19E are normal-only plates).
+- Step 5 (pinned from Step 3): differential expression (limma on VST) of C5 ERBB2-low (non-amplified, mostly HER2-low, ER+) vs. luminal clusters C1–C3 and vs. C5 ERBB2-high, to find what makes them HER2-enriched-like without amplification. Inputs: `results/03.0_pam_clusters/clusters.csv` (`cluster`, `c5_mode`).
 
 ## Workflow
 - PI reviews all code; three reviewers (`.claude/agents/`: continuity, technical, reference-master) run after each step. If the agent types aren't loaded (session started outside the repo), run them as general-purpose agents told to read and adopt the agent `.md` file.

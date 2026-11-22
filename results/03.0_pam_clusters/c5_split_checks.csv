@@ -1,0 +1,9 @@
+check,value
+"Valley, bandwidth adjust 0.5",14.773354748647868
+"Valley, bandwidth adjust 0.75",14.847950741944732
+"Valley, bandwidth adjust 1",14.9225467352416
+"Valley, bandwidth adjust 1.25",14.938269874988745
+"Valley, bandwidth adjust 1.5",14.945086030461646
+"Gaussian mixture BIC, 1 component",-713.5802662188738
+"Gaussian mixture BIC, 2 components",-643.308301375572
+"Gaussian mixture, tumors in lower component",84

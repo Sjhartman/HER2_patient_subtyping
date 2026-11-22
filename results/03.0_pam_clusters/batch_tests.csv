@@ -1,0 +1,7 @@
+test,p,cramers_v
+Era vs cluster | histology (CMH),1.2338904062339062e-5,NA
+Era vs cluster | histology x ER (CMH),2.707970429320889e-4,NA
+"Era vs cluster, ductal only (chi-square, simulated p)",9.999000099990002e-5,0.17696972208643483
+"Era vs cluster, ER+ ductal (chi-square, simulated p)",0.0014998500149985001,0.15898867111960557
+"Era vs cluster, ER- ductal (chi-square, simulated p)",0.5637436256374363,0
+"Plate vs cluster, ductal only (chi-square, simulated p)",0.011498850114988501,0.10963813670725343

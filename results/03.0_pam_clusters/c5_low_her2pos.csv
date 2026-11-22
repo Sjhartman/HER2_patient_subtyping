@@ -1,0 +1,14 @@
+sample_id,TSS,ERBB2,gistic,score,fish,label_source,rule,PAM50
+TCGA-A2-A0EQ-01,A2,12.580467999858666,0,3,Negative,Numeric IHC score,"IHC score 3+, FISH Negative",Her2
+TCGA-A8-A06R-01,A8,11.32489563778501,-1,2,Positive,Numeric IHC score,"IHC score 2+, FISH Positive",LumB
+TCGA-A8-A075-01,A8,12.201226545266236,-1,2,Positive,Numeric IHC score,"IHC score 2+, FISH Positive",LumB
+TCGA-A8-A08P-01,A8,13.549813040495808,1,3,Positive,Numeric IHC score,"IHC score 3+, FISH Positive",LumB
+TCGA-A8-A097-01,A8,14.89457845946288,2,2,Positive,Numeric IHC score,"IHC score 2+, FISH Positive",LumB
+TCGA-AQ-A04L-01,AQ,13.003813634567598,-1,3,NA,Numeric IHC score,IHC score 3+,Her2
+TCGA-BH-A0B6-01,BH,11.913656398182097,-2,NA,NA,Reported IHC status only,Reported IHC Positive,LumA
+TCGA-BH-A18P-01,BH,13.580879014377448,1,2,Positive,Numeric IHC score,"IHC score 2+, FISH Positive",Her2
+TCGA-E9-A1N6-01,E9,13.815675076150857,NA,NA,NA,Reported IHC status only,Reported IHC Positive,LumB
+TCGA-E9-A22E-01,E9,10.965238741654384,-1,NA,NA,Reported IHC status only,Reported IHC Positive,LumB
+TCGA-E9-A3X8-01,E9,12.552746320288026,-1,NA,NA,Reported IHC status only,Reported IHC Positive,LumA
+TCGA-LL-A5YL-01,LL,13.575116465518851,0,3,Negative,Numeric IHC score,"IHC score 3+, FISH Negative",Her2
+TCGA-LL-A5YN-01,LL,13.816259099333989,2,2,Positive,Numeric IHC score,"IHC score 2+, FISH Positive",LumA
