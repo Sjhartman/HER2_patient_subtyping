@@ -14,4 +14,8 @@ Data are kept outside the repo in `../data_dir/`.
 
 ## Scripts
 
-_Added as generated._
+Run from repo root (`Rscript analyses/<script>.R`); outputs go to `results/<script>/`.
+
+| Step | Script | Purpose |
+|---|---|---|
+| 1 | `analyses/01.0_qc_vst_pca.R` | QC, DESeq2 VST, PCA, PC1–5 vs. clinical/technical features |

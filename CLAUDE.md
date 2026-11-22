@@ -24,7 +24,7 @@
 
 ## Report
 - `report.Rmd` → `report.html` (R Markdown).
-- Opening statement: Claude Code was run in manual mode using Opus 5.5, privately.
+- Opening statement: Claude Code was run in manual mode using Opus 5.5.
 - Figures and tables numbered separately, with succinct legends.
 - Every figure/table is cited in the text with bolded parentheses, e.g. **(Figure 1)**, **(Table 2)**.
 

@@ -1,0 +1,48 @@
+---
+title: "HER2 patient subtyping in TCGA breast cancer"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(tidyverse)
+r1 <- "results/01.0_qc_vst_pca"
+```
+
+*Claude Code was run in manual mode using Opus 5.5. The PI reviewed all code and analytical choices.*
+
+## 1. QC and normalization
+
+**Input.** RNA-seq for 1,212 samples (1,093 primary tumor, 112 adjacent normal, 7 metastasis) across 20,502 genes. The values are not raw counts: the upper quartile of non-zero values is ~1000 in every sample, which matches TCGA's upper-quartile (UQ) normalized RSEM output **(Figure 1)**. Read depth is therefore already scaled out upstream.
+
+**Normalization.** Values were rounded to integers, and genes with ≥10 counts in ≥10% of samples were kept (16,453 genes). DESeq2 median-of-ratios size factors were then estimated; these sit near 1 (0.79–1.11), correcting residual composition differences left after UQ scaling **(Figure 1)**. Finally a blind variance-stabilizing transform (VST) was applied. No sample was a clear outlier on totals, genes detected or size factor, so all samples were kept.
+
+```{r fig1, fig.cap = "**Figure 1.** Per-sample QC by sample type: UQ-scaled total, upper quartile of non-zero values, genes detected, and DESeq2 size factor."}
+knitr::include_graphics(file.path(r1, "qc_boxplots.png"))
+```
+
+**PCA.** On the top 2,000 most variable genes, adjacent normals separate from tumors and a distinct tumor cluster forms (likely basal-like) **(Figure 2)**.
+
+```{r fig2, fig.cap = "**Figure 2.** PCA of all samples (VST, top 2,000 variable genes), colored by sample type.", out.width = "60%"}
+knitr::include_graphics(file.path(r1, "pca_all_samples.png"))
+```
+
+To link expression structure to clinical features, PCA was repeated on primary tumors only. Each of PC1–5 was regressed on each clinical and technical feature, with R² as the effect size and Benjamini-Hochberg adjusted p-values **(Figure 3)**. Categorical levels with <10 samples were set to missing.
+
+```{r fig3, fig.cap = "**Figure 3.** Variance in each primary-tumor PC explained by clinical and technical features (R², linear model). Percent variance per PC is shown under each axis label. \\* BH-adjusted p < 0.05.", out.width = "75%"}
+knitr::include_graphics(file.path(r1, "pc_clinical_heatmap.png"))
+```
+
+```{r tab1}
+pve <- read_csv(file.path(r1, "pca_variance.csv"))
+read_csv(file.path(r1, "pc_clinical_assoc.csv")) |>
+  filter(padj < 0.05) |> group_by(PC) |> slice_max(r2, n = 3) |>
+  summarise(`Top features (R²)` = paste0(feature, " (", round(r2, 2), ")", collapse = "; ")) |>
+  left_join(pve, by = "PC") |> select(PC, `% variance` = pct_var, `Top features (R²)`) |>
+  knitr::kable(caption = "**Table 1.** Percent variance and the three strongest significant feature associations for PC1–5 (primary tumors).")
+```
+
+**Interpretation.** PC1 (16.6%) is the ER/PR hormone-receptor axis (luminal vs. basal). PC2 (7.9%) tracks genomic instability (fraction genome altered) and histology (lobular vs. ductal). PC3 (4.3%) is the first axis tied to HER2, through IHC and FISH status, but it also carries a plate effect. PC4 and PC5 are mostly technical (plate, tissue source site) **(Table 1)**. HER2 biology is therefore a minor source of global variance, which supports a targeted gene set in later steps rather than whole-transcriptome clustering. Plate effects on PC3–4 will need checking before clustering (Step 3).
