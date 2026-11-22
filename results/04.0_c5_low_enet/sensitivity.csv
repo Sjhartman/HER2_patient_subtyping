@@ -1,0 +1,5 @@
+comparator,model,n_main,n_sens,n_shared,jaccard
+C5 ERBB2-high,No purity covariate,72,67,64,0.8533333333333334
+C5 ERBB2-high,Purity + era + lobular,72,62,48,0.5581395348837209
+C1-C3,No purity covariate,98,108,73,0.5488721804511278
+C1-C3,Purity + era + lobular,98,94,80,0.7142857142857143

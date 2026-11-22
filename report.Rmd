@@ -37,6 +37,19 @@ ari50 <- read_csv(file.path(r30, "ari_pam50.csv"))$ARI
 c5s <- read_csv(file.path(r30, "c5_split_checks.csv")); valley3 <- c5s$value[3]
 c5f <- read_csv(file.path(r30, "c5_mode_fit.csv")); c5t <- read_csv(file.path(r30, "c5_mode_tests.csv"))
 c5p <- read_csv(file.path(r30, "c5_purity.csv"))
+# Step 4 elastic net
+r40 <- "results/04.0_c5_low_enet"
+auc4 <- read_csv(file.path(r40, "cv_auc.csv")); cmp4 <- read_csv(file.path(r40, "cv_compare.csv"))
+feat4 <- read_csv(file.path(r40, "features.csv")); stab4 <- filter(feat4, sel_freq >= 0.7)
+cm4 <- read_csv(file.path(r40, "compact_model.csv")); sens4 <- read_csv(file.path(r40, "sensitivity.csv"))
+prof4 <- read_csv(file.path(r40, "luminal_profile_by_group.csv")); inf4 <- read_csv(file.path(r40, "infiltration_corr.csv"))
+msz4 <- read_csv(file.path(r40, "compact_size.csv")); pm4 <- read_csv(file.path(r40, "purity_matching.csv"))
+t7 <- \(g) feat4$pct_in_top_m[feat4$comparator == "C1-C3" & feat4$symbol == g]
+st3 <- feat4$rank1_pct[feat4$comparator == "C5 ERBB2-high" & feat4$gene == "STARD3"]
+a4 <- \(c, m) f3(auc4$auc[auc4$comparator == c & auc4$model == m])
+d4 <- \(c, v) cmp4[cmp4$comparator == c & cmp4$vs == v, ]
+or4 <- \(t) sprintf("%.2f", exp(cm4$beta[cm4$comparator == "C1-C3" & cm4$term == t]))
+n4 <- \(c, up = NA) sum(stab4$comparator == c & (is.na(up) | (stab4$diff > 0) == up))
 ```
 
 *Claude Code was run in manual mode using Opus 5.5. The PI reviewed all code and analytical choices.*
@@ -296,7 +309,7 @@ No cluster here is specific to HER2-low.
 
 **Re-testing candidates.** The two amplified IHC-negative tumors from Section 2.3 fall in C4 (TCGA-A2-A0YJ-01, PAM50 basal) and C1 (TCGA-A8-A08J-01, PAM50 Her2).
 
-**Implications.** Within C5, ERBB2 copy number separates amplified HER2+ tumors from non-amplified tumors with luminal-level ERBB2 mRNA. Among the scored HER2− tumors in this group, most are HER2-low (31 of 34). HER2-low, and with it eligibility for trastuzumab deruxtecan in previously treated metastatic disease [10], is common in every cluster, so this group is not unique in ADC eligibility. What sets it apart is expression that places it in C5 despite no amplification or high ERBB2 (27 of 83 are PAM50 Her2). Step 4 uses elastic net to find the genes that separate C5 from the luminal clusters C1–C3. Step 5 compares the two C5 groups directly.
+**Implications.** Within C5, ERBB2 copy number separates amplified HER2+ tumors from non-amplified tumors with luminal-level ERBB2 mRNA. Among the scored HER2− tumors in this group, most are HER2-low (31 of 34). HER2-low, and with it eligibility for trastuzumab deruxtecan in previously treated metastatic disease [10], is common in every cluster, so this group is not unique in ADC eligibility. What sets it apart is expression that places it in C5 despite no amplification or high ERBB2, at the cluster's edge; its PAM50 calls are mixed (27 Her2, 36 LumB, 17 LumA, 3 other). Section 4 identifies the genes behind this.
 
 ```{r tab5}
 clsum |> left_join(lowtab, by = c("cluster" = "group")) |>
@@ -310,6 +323,79 @@ clsum |> left_join(lowtab, by = c("cluster" = "group")) |>
 ```{r fig8, fig.cap = "**Figure 8.** Left: clinical HER2 category by PAM cluster, stacked (top to bottom) as HER2+ (cluster color), HER2-low 2+ (lighter cluster color), HER2-low 1+, HER2-0, and HER2− without a numeric score. Right: ERBB2 mRNA (VST) by cluster, points colored by ERBB2 copy number (GISTIC, as in Figure 7); bottom strip: cluster color. Dashed line: density minimum separating the ERBB2-high and ERBB2-low groups in C5.", out.width = "100%"}
 knitr::include_graphics(file.path(r30, "her2_by_cluster.png"))
 ```
+
+## 4. What sets the C5 ERBB2-low group apart
+
+The C5 ERBB2-low group (Section 3.2) is not amplified, has luminal-level ERBB2 mRNA, and is mostly HER2-low among scored HER2− tumors. PAM nevertheless placed it in C5, at the cluster's edge. This section asks which genes separate it in two comparisons: against the amplified tumors in its own cluster (C5 ERBB2-high), and against luminal disease (clusters C1–C3, pooled). C4 (Basal) is not modelled and is shown for reference only.
+
+### 4.1 Models
+
+**Elastic net for feature selection.** Each contrast was modelled by elastic net logistic regression, with C5 ERBB2-low as the positive class (83 tumors) against C5 ERBB2-high (73) or C1–C3 (717; one tumor without histology was excluded so that all models use the same tumors):
+
+$$\operatorname{logit} P(\text{C5 ERBB2-low}) = \beta_0 + \delta\,\text{Purity} + \sum_{j} \beta_j\,\text{gene}_j$$
+
+- **gene$_j$:** mRNA (uncorrected VST) of the 5,000 most variable genes across primary tumors. ERBB2 is left out of the C5-high contrast because the two C5 groups were defined by ERBB2 mRNA.
+- **Purity:** ESTIMATE score / 1,000 (higher = lower purity), with coefficient $\delta$. Tumor purity confounds expression analyses [3] and the ERBB2-low group is the least pure **(Table 6)**, so purity is not penalized: genes are selected for what they add beyond it.
+- **Penalty:** the gene coefficients $\beta_j$ are shrunk by $\lambda \sum_j \left[\tfrac{1-\alpha}{2}\beta_j^2 + \alpha\,|\beta_j|\right]$ with $\alpha$ = 0.5, which keeps correlated genes together while still selecting few. $\lambda$ is chosen by inner 10-fold CV (largest $\lambda$ within one standard error of the best).
+
+**Selection frequency.** The model was refitted in each of the 100 training sets of a 5-fold × 20-repeat stratified CV. A gene is called **stable** if it was selected in ≥70% of them. This is a descriptive cut-off without error control. The held-out folds give the AUC, averaged over test folds, with a 95% CI from the corrected repeated k-fold t-test.
+
+**Compact logistic model for prediction.** A small number $m$ of genes was refitted as an ordinary logistic regression:
+
+$$\operatorname{logit} P(\text{C5 ERBB2-low}) = \beta_0 + \delta\,\text{Purity} + \sum_{j=1}^{m} \beta_j\,z_j$$
+
+where $z_j$ is gene $j$ z-scored within the contrast, so $e^{\beta_j}$ is the odds ratio per standard deviation.
+
+- **Cross-validation:** in each training set, the genes were the $m$ largest standardized coefficients of that set's elastic net ($m$ = 1–20), fitted by ordinary (maximum-likelihood) logistic regression. The CV AUC therefore rates this gene-picking procedure, not one fixed gene set.
+- **Size:** $m$ is a parsimony choice, the smallest within 0.01 AUC of the best compact model.
+- **Final fit:** the $m$ genes most often in the top $m$ across training sets (the genes the CV procedure usually picked), fitted on all tumors by Firth's penalized logistic regression, which keeps coefficients finite when the groups are almost perfectly separated. CIs are profile-likelihood.
+
+Models were compared with the corrected repeated k-fold t-test, BH-adjusted **(Supplement S13)**.
+
+**Caveat: AUCs are high by construction.** The clusters and the C5 split were defined from many of these same genes. AUC here measures how few genes describe a group, not a validated classifier.
+
+### 4.2 Results
+
+**Against amplified C5, the amplicon is sufficient.** `r n4("C5 ERBB2-high")` genes are stable **(Figure 9, Table S20)**. Ten of the `r n4("C5 ERBB2-high", FALSE)` genes lower in the ERBB2-low group lie in the 17q12 ERBB2 amplicon (STARD3, GRB7, PGAP3, MIEN1, MED1, CDK12, ORMDL3, PSMD3, PNMT, MED24). This is expected: the groups were split on ERBB2 mRNA, and these genes are co-amplified with ERBB2, so this contrast mainly confirms the split. STARD3 was the top gene in `r round(st3)`% of training sets (GRB7 or PGAP3 otherwise), and a one-gene compact model reaches a CV AUC of `r a4("C5 ERBB2-high", "Compact (top 1) + purity")` (full elastic net `r a4("C5 ERBB2-high", "Elastic net (all genes) + purity")`) **(Table 7, Table S21)**.
+
+```{r fig9, fig.cap = "**Figure 9.** The 20 genes most often selected by the elastic net in each contrast, out of 100 CV training sets (ties ordered by coefficient size; current gene symbols). Color: direction in C5 ERBB2-low relative to the comparator. Dashed line: 70% stability cut-off.", out.width = "75%"}
+knitr::include_graphics(file.path(r40, "top_features.png"))
+```
+
+The other stable genes show what adds beyond the amplicon: `r n4("C5 ERBB2-high", TRUE)` higher (including RIPPLY3, ALOX15, MSI1 and RERG) and 4 lower (TOB1, USP18, ITGB6, GALNT7) in the ERBB2-low group, with smaller differences (0.3–1.7 VST units). Because the amplicon already separates the groups almost perfectly, genes that also differ (for example with ER status, 78% vs. 53% ER+, or infiltration) are not needed by the model and are left out. This list is therefore not a complete list of differences; Step 5 compares the groups gene by gene.
+
+```{r tab7}
+auc4 |> filter(model %in% c("Purity only", "ERBB2 mRNA + purity", "Elastic net (all genes) + purity") |
+                 (comparator == "C5 ERBB2-high" & model == "Compact (top 1) + purity") |
+                 (comparator == "C1-C3" & model == "Compact (top 7) + purity")) |>
+  mutate(comparator = factor(comparator, c("C5 ERBB2-high", "C1-C3")),
+         model = recode(model, `Compact (top 1) + purity` = "Compact (top 1 gene) + purity",
+                        `Compact (top 7) + purity` = "Compact (top 7 genes) + purity")) |>
+  arrange(comparator, auc) |>
+  transmute(`C5 ERBB2-low vs.` = comparator, Model = model, `CV AUC (95% CI)` = paste0(f3(auc), " (", f3(lo), "–", f3(pmin(hi, 1)), ")")) |>
+  knitr::kable(caption = "**Table 7.** Cross-validated AUC of the logistic models (Section 4.1): mean over test folds of 5-fold × 20-repeat stratified CV, with corrected repeated k-fold t-test 95% CI (upper limit capped at 1). Elastic net: all 5,000 genes, purity unpenalized. Compact: plain logistic regression on the top elastic net genes of each training set.")
+```
+
+**Against the luminal clusters, a weaker luminal program.** `r n4("C1-C3")` genes are stable **(Figure 9, Figure S7)**; details are in **(Supplement S13)**.
+
+- **Lower luminal genes:** ER-associated genes, including PGR, BCL2 and MAPT [15], GFRA1, ELOVL2 and SERPINA3, are about 2 VST units lower than in luminal tumors even though 78% of the group is ER+ by IHC, and they stay lower against luminal tumors of matched purity **(Table S22)**.
+- **Shift toward non-luminal expression:** genes such as VSTM2L, KRT86, MMP1 and S100A9 are higher, placing the group between luminal tumors and C5 ERBB2-high/C4 with mixed PAM50 calls (27 Her2, 36 LumB, 17 LumA, 3 other), a shift also seen when luminal tumors progress to metastasis [19].
+- **ERBB2 adds nothing:** ERBB2 mRNA with purity (CV AUC `r a4("C1-C3", "ERBB2 mRNA + purity")`) does no better than purity alone (`r a4("C1-C3", "Purity only")`).
+
+**A 7-gene compact model captures most of the signal** **(Table 7, Table S21, Figure S8)**. A compact model built from the top 7 genes of each training set's elastic net, with purity, reaches a CV AUC of `r a4("C1-C3", "Compact (top 7) + purity")`. This beats purity alone by `r f3(d4("C1-C3", "Purity only")$delta_auc)` (BH-adjusted p `r fp(d4("C1-C3", "Purity only")$padj)`) and falls `r f3(-d4("C1-C3", "Elastic net (all genes) + purity")$delta_auc)` short of the full elastic net (BH-adjusted p = `r fp(d4("C1-C3", "Elastic net (all genes) + purity")$padj)`). Adding more genes gains little (best `r f3(max(auc4$auc[auc4$comparator == "C1-C3" & str_detect(auc4$model, "Compact")]))` at `r msz4$best_m[msz4$comparator == "C1-C3"]` genes).
+
+The top 7 varied between training sets. Only VSTM2L and MAPT were in it almost every time (`r round(t7("VSTM2L"))`% and `r round(t7("MAPT"))`%), and many near-equivalent sets exist **(Table S20)**. The final model uses the 7 genes picked most often: VSTM2L, KRT86, MMP1 and TMEM45A (higher) and MAPT, JADE2 (PHF15) and BCL2 (lower). TMEM45A partly tracks stroma **(Table S22)**. Their odds ratios per SD range from `r or4("MAPT")` (MAPT) to `r or4("VSTM2L")` (VSTM2L).
+
+**Robustness.** When purity is dropped or era and lobular histology are added, `r sens4$n_shared[sens4$comparator == "C1-C3"][1]`–`r sens4$n_shared[sens4$comparator == "C1-C3"][2]` of the `r sens4$n_main[sens4$comparator == "C1-C3"][1]` genes in the full-data luminal model stay selected. This is expected when correlated genes can stand in for one another **(Supplement S13)**.
+
+**Implications.** The C5 ERBB2-low group is not a HER2-driven group. It has no amplicon and no high ERBB2. It is heavily infiltrated, and despite mostly ER+ IHC its luminal genes are lower than in luminal tumors. Its expression is shifted part of the way toward HER2-enriched and basal tumors, and its PAM50 calls are mixed. Most of its scored HER2− tumors are HER2-low (Section 3.2), but the 7-gene model describes membership of this group, not HER2-low status.
+
+For therapy, two findings are relevant:
+
+- **HER2-enriched tumors in HR+/HER2− disease:** in metastatic disease, these were linked, in an exploratory analysis, to benefit from adding the HER2 kinase inhibitor lapatinib to letrozole [20]. This bears only on the PAM50 Her2 third of this group.
+- **HER2-directed ADCs:** trastuzumab deruxtecan activity falls with HER2 expression but persists even in HER2-0 tumors [21].
+
+Whether this group's expression state changes ADC benefit cannot be tested here. Step 5 tests the candidate programs behind these genes (ER signalling, proliferation, hypoxia, immune) and compares the two C5 groups gene by gene.
 
 # Supplement
 
@@ -447,7 +533,7 @@ read_csv(file.path(r21, "clinical_interactions.csv")) |>
   - **IHC 1+ vs. 0 (the harder clinical split):** RNA still leads (0.652 vs. 0.554, p = 0.008; CV BH-adjusted p = 0.03).
   - **Model:** the RNA logistic model with HER2-low as the outcome gives $\beta_1$ = `r sprintf("%.2f", b("HER2-low: RNA", "ERBB2"))` (Table S10).
   - **Not just ER biology:** HER2-low is enriched in HR+ disease [17], so RNA could be riding on ER biology. It still leads within ER+ tumors (0.655 vs. 0.559, p = 0.04) and in CV models that include ER (+0.13, BH-adjusted p = 0.03).
-  - **Ceiling:** pathologists agree poorly on IHC 0 vs. 1+ [19], which caps any predictor of this split.
+  - **Ceiling:** pathologists agree poorly on IHC 0 vs. 1+ [22], which caps any predictor of this split.
   - **Ultralow:** TCGA "IHC 0" probably includes HER2-ultralow tumors (faint staining below 1+). These are now also eligible for trastuzumab deruxtecan in HR+ disease [11], so for HR+ tumors the treatment decision now lies below IHC 0 vs. 1+.
 
 **Combining predictors.** In CV logistic models (Table S11, Table S12), each step below leaves the AUC not significantly changed (all BH-adjusted p ≥ 0.22):
@@ -464,7 +550,7 @@ read_csv(file.path(r21, "clinical_interactions.csv")) |>
 
 - **The label matters.** The main label is IHC, a protein readout, which an mRNA measure tracks more directly than copy number. The FISH-resolved clinical status partly favors copy number instead, and there DNA does not beat RNA either. FISH itself could not be a predictor without leaking the label.
 - **The scales differ.** mRNA is continuous, while GISTIC has five levels.
-- **mRNA is not a validated substitute.** A commercial ERBB2 mRNA assay (Oncotype DX) missed some IHC/FISH-positive tumors [20], so mRNA alone is not a validated substitute for IHC/FISH.
+- **mRNA is not a validated substitute.** A commercial ERBB2 mRNA assay (Oncotype DX) missed some IHC/FISH-positive tumors [23], so mRNA alone is not a validated substitute for IHC/FISH.
 
 ## S8. Logistic models and cross-validation
 
@@ -637,6 +723,91 @@ read_csv(file.path(r30, "c5_low_her2pos.csv")) |>
   knitr::kable(caption = "**Table S19.** Clinically HER2+ tumors in the ERBB2-low group of C5. Rule: how HER2 status was set (Table S5).")
 ```
 
+## S13. Elastic net and compact models: details
+
+**C5 ERBB2-low vs. the luminal clusters.** `r n4("C1-C3")` genes are stable: `r n4("C1-C3", FALSE)` lower and `r n4("C1-C3", TRUE)` higher in the ERBB2-low group **(Figure 9, Figure S7)**.
+
+- **Lower:** two kinds of genes.
+  - **Luminal, ER-associated genes:** including the PAM50 genes PGR, BCL2 and MAPT [15], and ELOVL2, GFRA1, SERPINA3 and IGF1R. They are lower than in every luminal cluster, although 78% of the group is ER+ by IHC.
+  - **Adipose and endothelial genes:** CAVIN2, MMRN1, TMEM132C, PCK1, EDNRB, TIMP4 and SEMA3G. These are high mainly in C2, the cluster with the most normal-breast and stromal content, so they reflect the comparator's tissue mix rather than tumor-cell biology.
+- **Higher:** VSTM2L, KRT86, MMP1, TMEM45A, S100A9, SOX11 and MFSD2A.
+- **Between luminal and non-luminal tumors:** on these genes the ERBB2-low group sits between the luminal clusters and both C5 ERBB2-high and C4 (Basal), with its lower genes less extreme than either (median z of the lower genes `r f2(prof4[["C5 ERBB2-low"]][2])`, vs. `r f2(prof4[["C5 ERBB2-high"]][2])` and `r f2(prof4$C4[2])`) **(Table S23)**.
+  - Descriptively, its profile matches C5 ERBB2-high slightly better than C4 (Pearson r `r f2(prof4[["C5 ERBB2-high"]][3])` vs. `r f2(prof4$C4[3])`). Both correlations are high by construction, because the genes were chosen to separate this group from luminal tumors, and their difference was not tested.
+  - Its PAM50 calls are mixed **(Table S18)**.
+- **Mostly not tracking infiltration:** every model includes purity, and two direct checks agree **(Table S22)**.
+  - **Purity-matched comparison:** each tumor was matched to 3 luminal tumors of similar purity by ESTIMATE (median `r round(pm4$median_ESTIMATE[2])` vs. `r round(pm4$median_ESTIMATE[1])`). All `r n4("C1-C3")` genes keep their direction, and the differences are a median `r round(100 * median(inf4$diff_matched / inf4$diff))`% of the unmatched ones. The ER-associated genes PGR, GFRA1, SERPINA3 and ELOVL2 are lower by about 2 VST units either way. The adipose and endothelial genes differ more after matching (e.g. CAVIN2 −0.70 to −1.32), as expected if they come from the comparator's tissue mix.
+  - **Correlation within luminal tumors** (so that group membership cannot drive it): most genes correlate weakly with stromal and immune marker scores (median |Spearman ρ| `r f2(median(abs(inf4$rho_stroma)))` and `r f2(median(abs(inf4$rho_immune)))`). Seven reach |ρ| ≥ 0.4 with ESTIMATE, stroma or immune: TMEM45A and SOX11 (stroma), S100A9, CAVIN2, MMRN1 and TMEM132C (ESTIMATE or immune), and RERG.
+  - **Reading these:** only the three higher in C5 ERBB2-low (TMEM45A, SOX11, S100A9) could be inflated by infiltration, and their purity-matched differences stay large (1.1–2.4 VST units). CAVIN2, MMRN1 and TMEM132C rise with infiltration yet are lower in this least-pure group, so infiltration masks rather than causes their difference.
+
+**Elastic net.** Genes were standardized internally before penalization; coefficients in **(Table S20)** are on the standardized scale (β × SD of the gene within the contrast). The 5,000 genes are a superset of the 2,000 used for clustering. The 1-SE choice of λ gives sparser, more reproducible gene sets than the λ with the lowest CV deviance. Selection frequency counts how often a gene has a non-zero coefficient across the 100 training sets. It is more reliable than a single fit, because the lasso part of the penalty picks one of a group of correlated genes somewhat arbitrarily. The training sets overlap heavily, so the frequencies are descriptive and the 70% cut-off has no error-rate guarantee. All random folds (outer and inner) were drawn before fitting, so results do not depend on the computer.
+
+**Compact models.** Within each training set, genes were ranked by that set's own elastic net, so the test fold never informs gene choice. The final genes are those most often in the in-fold top $m$ (column "In top m (%)" of Table S20, m = 7). Choosing instead by full-data coefficient would swap BCL2 and TMEM45A for NKAIN1 and ENTREP1, which were in the in-fold top 7 in under a quarter of training sets. Final fits are in **(Table S21)**. The number of genes $m$ was chosen on the same CV results, so the compact AUCs are slightly optimistic **(Figure S8)**:
+
+- **C1–C3:** AUC rises steeply to about 6 genes and changes little after 7 (`r a4("C1-C3", "Compact (top 7) + purity")` at 7, best `r f3(max(auc4$auc[auc4$comparator == "C1-C3" & str_detect(auc4$model, "Compact")]))`).
+- **C5 ERBB2-high:** one gene is enough.
+
+Paired comparisons used the corrected repeated k-fold t-test (as in Supplement S8), BH-adjusted across the five comparisons **(Table S24)**.
+
+**Sensitivity** **(Table S25)**. The full-data elastic net was refitted, with the same inner folds, (a) without the purity term, and (b) with processing era and lobular histology added as unpenalized covariates. Overlap with the main gene set was measured by the Jaccard index (shared / union).
+
+- **vs. C5 ERBB2-high:** dropping purity changes little (Jaccard `r f2(sens4$jaccard[1])`); adding era and histology changes more (`r f2(sens4$jaccard[2])`).
+- **vs. C1–C3:** Jaccard `r f2(sens4$jaccard[3])` without purity (`r sens4$n_sens[3]` genes selected vs. `r sens4$n_main[3]`) and `r f2(sens4$jaccard[4])` with era and histology.
+
+Moderate overlap is expected for single elastic net fits on correlated genes, which is why selection frequency across training sets is the main criterion.
+
+```{r figS7, fig.cap = "**Figure S7.** Stable genes (selected in ≥70% of training sets) by group: mean z-score across all primary tumors, capped at ±1.5. Rows are grouped by the contrast in which each gene is stable: vs. C5 ERBB2-high (top), both contrasts (RERG: higher than in C5 ERBB2-high but lower than in C1–C3), and vs. C1–C3 (bottom); within blocks, ordered by hierarchical clustering. C4 is shown for reference. Current gene symbols.", out.width = "45%"}
+knitr::include_graphics(file.path(r40, "stable_genes_heatmap.png"))
+```
+
+```{r tabS20}
+stab4 |> mutate(comparator = factor(comparator, c("C5 ERBB2-high", "C1-C3"))) |> arrange(comparator, -sel_freq, -abs(coef_std)) |>
+  transmute(`C5 ERBB2-low vs.` = comparator, Gene = if_else(symbol != gene, paste0(symbol, " (", gene, ")"), gene),
+            `Selected (%)` = round(100 * sel_freq), `Coefficient (standardized)` = sprintf("%.2f", coef_std),
+            `Mean VST, C5-low` = sprintf("%.1f", mean_c5low), `Mean VST, comparator` = sprintf("%.1f", mean_comp),
+            Difference = sprintf("%.2f", diff), `In top m (%)` = round(pct_in_top_m)) |>
+  knitr::kable(caption = "**Table S20.** Stable genes (selected in ≥70% of 100 CV training sets) per contrast; current symbol, with the TCGA symbol in brackets where it has changed. Coefficient: full-data elastic net, β × SD of the gene (0 = not selected in the full-data fit). Difference: mean VST in C5 ERBB2-low minus the comparator (positive = higher in C5 ERBB2-low). In top m: % of training sets in which the gene was among the compact model's top m genes (m = 1 vs. C5 ERBB2-high, 7 vs. C1–C3).")
+```
+
+```{r tabS21}
+sup <- \(n) chartr("0123456789-", "⁰¹²³⁴⁵⁶⁷⁸⁹⁻", n)
+sci <- \(x) if_else(x < 0.01, { e <- floor(log10(x)); paste0(sprintf("%.1f", x / 10^e), " × 10", sup(as.character(e))) }, sprintf("%.2f", x))
+cm4 |> mutate(comparator = factor(comparator, c("C5 ERBB2-high", "C1-C3"))) |> arrange(comparator) |>
+  transmute(`C5 ERBB2-low vs.` = comparator,
+            Term = case_when(term == "(Intercept)" ~ "Intercept", symbol != term ~ paste0(symbol, " (", term, ")"), .default = term),
+            `β (95% CI)` = paste0(sprintf("%.2f", beta), " (", sprintf("%.2f", lo), " to ", sprintf("%.2f", hi), ")"),
+            `OR per SD` = if_else(term %in% c("(Intercept)", "Purity"), "–", sci(exp(beta))), p = fp(p)) |>
+  knitr::kable(caption = "**Table S21.** Final compact logistic models, fitted on all tumors of each contrast by Firth's penalized logistic regression (equation in Section 4.1), with profile-likelihood 95% CI and p. Genes are z-scored within the contrast (TCGA symbol in brackets where it has changed); purity is ESTIMATE / 1,000. The STARD3 model almost separates the two C5 groups, so its coefficient is large and imprecise.")
+```
+
+```{r tabS22}
+inf4 |> arrange(-pmax(abs(rho_ESTIMATE), abs(rho_stroma), abs(rho_immune))) |>
+  transmute(Gene = if_else(symbol != gene, paste0(symbol, " (", gene, ")"), gene), Difference = f2(diff),
+            `Difference, purity-matched` = f2(diff_matched),
+            `ρ ESTIMATE` = f2(rho_ESTIMATE), `ρ stroma` = f2(rho_stroma), `ρ immune` = f2(rho_immune)) |>
+  knitr::kable(caption = "**Table S22.** Purity checks for the stable genes from the C5 ERBB2-low vs. C1–C3 contrast. Difference: mean VST in C5 ERBB2-low minus all C1–C3 tumors. Purity-matched: minus the 3 C1–C3 tumors nearest in ESTIMATE to each C5 ERBB2-low tumor (with replacement). ρ: Spearman correlation within C1–C3 tumors with ESTIMATE (higher = lower purity) and with stromal and immune marker scores (mean z of COL1A1, FAP, COL3A1 and of PTPRC, CD8A, CD3E; as in Table 6). Sorted by the largest |ρ|.")
+```
+
+```{r tabS23}
+prof4 |> rename(Summary = row) |> mutate(across(-Summary, f2)) |>
+  knitr::kable(caption = "**Table S23.** Expression of the stable genes from the C5 ERBB2-low vs. C1–C3 contrast in every group. Each gene is z-scored across all primary tumors and averaged within each group. Rows 1–2: median over the genes higher or lower in C5 ERBB2-low. Row 3: Pearson correlation of each group's mean profile with that of C5 ERBB2-low (positive for any non-luminal group by construction).")
+```
+
+```{r figS8, fig.cap = "**Figure S8.** CV AUC of the compact logistic model by number of top genes (mean over test folds, corrected 95% CI capped at 1), with reference lines for the full elastic net, ERBB2 mRNA + purity and purity alone. All models include purity. Dotted red line: chosen number of genes.", out.width = "80%"}
+knitr::include_graphics(file.path(r40, "compact_auc.png"))
+```
+
+```{r tabS24}
+cmp4 |> transmute(`C5 ERBB2-low vs.` = comparator, Comparison = paste(str_replace(model, "top (\\d+)", "top \\1 genes"), "vs.", vs),
+                  `AUC difference (95% CI)` = paste0(f3(delta_auc), " (", f3(lo), " to ", f3(hi), ")"), p = fp(p), `p (BH)` = fp(padj)) |>
+  knitr::kable(caption = "**Table S24.** Paired comparisons of the compact model with the other models (compact minus other): mean AUC difference over test folds, with corrected repeated k-fold t-test CI and p, BH-adjusted across the five comparisons.")
+```
+
+```{r tabS25}
+sens4 |> transmute(`C5 ERBB2-low vs.` = comparator, Model = model, `Genes (main)` = n_main, `Genes (sensitivity)` = n_sens,
+                   Shared = n_shared, Jaccard = f2(jaccard)) |>
+  knitr::kable(caption = "**Table S25.** Sensitivity of elastic net gene selection (full-data fits, same inner folds) to the covariates. Main model: purity unpenalized. Jaccard: shared genes / all genes selected by either model.")
+```
+
 # References
 
 1. Cancer Genome Atlas Network. Comprehensive molecular portraits of human breast tumours. *Nature* 2012;490:61–70. PMID 23000897. DOI: [10.1038/nature11412](https://doi.org/10.1038/nature11412).
@@ -657,8 +828,11 @@ read_csv(file.path(r30, "c5_low_her2pos.csv")) |>
 16. Prat A, et al. Molecular features and survival outcomes of the intrinsic subtypes within HER2-positive breast cancer. *J Natl Cancer Inst* 2014;106:dju152. PMID 25139534. DOI: [10.1093/jnci/dju152](https://doi.org/10.1093/jnci/dju152).
 17. Schettini F, et al. Clinical, pathological, and PAM50 gene expression features of HER2-low breast cancer. *NPJ Breast Cancer* 2021;7:1. PMID 33397968. DOI: [10.1038/s41523-020-00208-2](https://doi.org/10.1038/s41523-020-00208-2).
 18. Denkert C, et al. Clinical and molecular characteristics of HER2-low-positive breast cancer: pooled analysis of individual patient data from four prospective, neoadjuvant clinical trials. *Lancet Oncol* 2021;22:1151–1161. PMID 34252375. DOI: [10.1016/S1470-2045(21)00301-6](https://doi.org/10.1016/S1470-2045(21)00301-6).
-19. Fernandez AI, et al. Examination of low ERBB2 protein expression in breast cancer tissue. *JAMA Oncol* 2022;8:607–610. PMID 35113160. DOI: [10.1001/jamaoncol.2021.7239](https://doi.org/10.1001/jamaoncol.2021.7239).
-20. Dabbs DJ, et al. High false-negative rate of HER2 quantitative reverse transcription polymerase chain reaction of the Oncotype DX test: an independent quality assurance study. *J Clin Oncol* 2011;29:4279–4285. PMID 21990395. DOI: [10.1200/JCO.2011.34.7963](https://doi.org/10.1200/JCO.2011.34.7963).
+19. Cejalvo JM, et al. Intrinsic subtypes and gene expression profiles in primary and metastatic breast cancer. *Cancer Res* 2017;77:2213–2221. PMID 28249905. DOI: [10.1158/0008-5472.CAN-16-2717](https://doi.org/10.1158/0008-5472.CAN-16-2717).
+20. Prat A, et al. Prognostic value of intrinsic subtypes in hormone receptor-positive metastatic breast cancer treated with letrozole with or without lapatinib. *JAMA Oncol* 2016;2:1287–1294. PMID 27281556. DOI: [10.1001/jamaoncol.2016.0922](https://doi.org/10.1001/jamaoncol.2016.0922).
+21. Mosele F, et al. Trastuzumab deruxtecan in metastatic breast cancer with variable HER2 expression: the phase 2 DAISY trial. *Nat Med* 2023;29:2110–2120. PMID 37488289. DOI: [10.1038/s41591-023-02478-2](https://doi.org/10.1038/s41591-023-02478-2).
+22. Fernandez AI, et al. Examination of low ERBB2 protein expression in breast cancer tissue. *JAMA Oncol* 2022;8:607–610. PMID 35113160. DOI: [10.1001/jamaoncol.2021.7239](https://doi.org/10.1001/jamaoncol.2021.7239).
+23. Dabbs DJ, et al. High false-negative rate of HER2 quantitative reverse transcription polymerase chain reaction of the Oncotype DX test: an independent quality assurance study. *J Clin Oncol* 2011;29:4279–4285. PMID 21990395. DOI: [10.1200/JCO.2011.34.7963](https://doi.org/10.1200/JCO.2011.34.7963).
 
 ```{=html}
 <!-- Cross-references: in-text (Figure/Table X) citations link to the item; captions link back to each citation -->

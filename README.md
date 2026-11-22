@@ -9,7 +9,7 @@ Data are kept outside the repo in `../data_dir/`.
 1. **QC and normalization** — QC RNA-seq and normalize for read depth. ✅
 2. **HER2+ identification** — clinical (IHC/FISH), then multimodal (RNA, copy number, other fields); compare RNA vs DNA for predicting IHC. ✅
 3. **Subsets** — unsupervised learning (PAM on filtered, transformed RNA-seq). ✅
-4. **Machine learning** — logistic regression (prediction), elastic net (feature selection).
+4. **Machine learning** — logistic regression (prediction), elastic net (feature selection). ✅ (pending review)
 5. **Deep dive** — normal tissue comparison, pathway enrichment by tumor type vs. step 3 partitions, causal biology, pathway differences between tumor types.
 
 ## Scripts
@@ -23,6 +23,7 @@ Run from repo root (`Rscript analyses/<script>.R`); outputs go to `results/<scri
 | 2 | `analyses/02.0_her2_labels.R` | HER2 labels (2018-style rules on reported IHC/FISH), HER2-low, disagreements; per-tumor features incl. ESTIMATE purity score and site |
 | 2 | `analyses/02.1_rna_vs_dna.R` | Clinical exploration, label-noise check by site, RNA vs DNA (raw paired AUC), purity, CV logistic models, discordant tumors |
 | 3 | `analyses/03.0_pam_clusters.R` | PAM clusters (top 2000 genes, k by silhouette + consensus PAC), robustness, PAM50 (genefu), HER2/batch associations, HER2-low by cluster, C5 ERBB2 modes |
+| 4 | `analyses/04.0_c5_low_enet.R` | C5 ERBB2-low vs C5 ERBB2-high and vs C1–C3 pooled: elastic net (purity unpenalized), selection stability, compact logistic model, sensitivity (no purity; + era/lobular) |
 
 ## Key notes for later steps
 
@@ -50,15 +51,23 @@ Run from repo root (`Rscript analyses/<script>.R`); outputs go to `results/<scri
 - ESTIMATE score (`estimate_score`, higher = lower purity) is available per tumor for Steps 3–5.
 
 **Report state (continue numbering from here)**
-- Main: Sections 1–3; Figures 1–8; Tables 1–6. Next: Figure 9, Table 7.
-- Supplement: Sections S1–S12; Figures S1–S6; Tables S1–S19. Next: S13, Figure S7, Table S20.
-- References [1]–[20], numbered by first citation in the whole document (main then supplement). After moving text, renumber by first appearance.
-- Model inline values come from `results/02.1_rna_vs_dna/model_coefficients.csv` via `b(model, term)` in the setup chunk; Step 3 values are read from `results/03.0_pam_clusters/*.csv` in the setup chunk.
+- Main: Sections 1–4; Figures 1–9; Tables 1–7. Next: Figure 10, Table 8.
+- Supplement: Sections S1–S13; Figures S1–S8; Tables S1–S25. Next: S14, Figure S9, Table S26.
+- References [1]–[23], numbered by first citation in the whole document (main then supplement). After moving text, renumber by first appearance.
+- Model inline values come from `results/02.1_rna_vs_dna/model_coefficients.csv` via `b(model, term)` in the setup chunk; Step 3 and 4 values are read from `results/03.0_pam_clusters/*.csv` and `results/04.0_c5_low_enet/*.csv` in the setup chunk.
 - Figure colors (Step 3 on): PAM clusters C1–C5 = Dark2 (teal, orange, lavender, magenta, green); PAM50 = browns/yellow/plum/aqua; ERBB2 GISTIC = blue–red (NA white). Reuse these in later steps.
 
 **Step 3 findings to carry forward**
 - C5 ERBB2-low group (non-amplified, mostly HER2-low among scored HER2−, 78% ER+) is the least pure group: median ESTIMATE 675 vs 9 in ERBB2-high, with high stromal and immune markers (Table 6); ERBB2 mRNA diluted by infiltration (ρ = −0.30), but the purest third is still at luminal ERBB2 level, and IHC is mostly 1+/2+.
 - Possible amplified-but-diluted tumors in C5 ERBB2-low: TCGA-C8-A26X-01 (GISTIC 2, IHC 1+, called HER2−: re-testing candidate), TCGA-C8-A138-01 and TCGA-C8-A1HL-01 (GISTIC 2, IHC 2+, no FISH: unresolved). Not yet in the report.
+
+**Step 4 findings to carry forward**
+- C5 ERBB2-low vs C5 ERBB2-high: the 17q12 amplicon is sufficient (STARD3 top gene in 94% of training sets; 1-gene CV AUC 0.996). This is near-circular (C5 split on ERBB2 mRNA). Non-amplicon stable genes = what adds beyond the amplicon only, not all differences (ER, infiltration also differ) -> Step 5 limma.
+- C5 ERBB2-low vs C1–C3 (pooled, n = 717): 43 stable genes. Lower luminal/ER genes (PGR, BCL2, MAPT, ELOVL2, GFRA1, SERPINA3, IGF1R) despite 78% ER+ IHC; higher VSTM2L, KRT86, MMP1, TMEM45A, S100A9, SOX11. Intermediate between luminal and C5-high/C4; PAM50 mixed (27 Her2, 36 LumB, 17 LumA). Not a HER2-driven group; do not call it HER2-enriched.
+- Infiltration check: purity-matched C1–C3 (3 per C5-low tumor by ESTIMATE) keeps all 43 directions (differences ~96% of unmatched); within C1–C3, 7 genes reach |rho| >= 0.4 with ESTIMATE/stroma/immune (TMEM45A, SOX11, S100A9, CAVIN2, MMRN1, TMEM132C, RERG).
+- 7-gene compact model: genes most often in the in-fold top 7 (VSTM2L, KRT86, MMP1, TMEM45A up; MAPT, JADE2/PHF15, BCL2 down), Firth fit; CV AUC 0.964 (procedure-level). Only VSTM2L and MAPT are consistently picked.
+- Gene lists for Step 5: `results/04.0_c5_low_enet/features.csv` (stable = `sel_freq >= 0.7`; `symbol` = current HGNC). Step 5 candidate programs: ER signalling, proliferation, hypoxia (TMEM45A), immune/myeloid (S100A9).
+- Packages added: `logistf` (Firth).
 
 **Plan for Steps 3–5**
 - Step 3: PAM on uncorrected VST (refilter genes on tumors). Test clusters vs plate/era **within histology** (e.g. CMH or ductal-only). Check stability.
