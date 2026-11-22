@@ -10,6 +10,9 @@ meta <- rsem |> select(1:3) |>
   mutate(sample_id = substr(bcr_patient_barcode, 1, 15),
          plate = substr(bcr_patient_barcode, 22, 25),        # sequencing plate (batch)
          tss = substr(bcr_patient_barcode, 6, 7))            # tissue source site
+# Plate IDs are sequential base-36 codes (all start with "A"); a gap after A19W splits two processing eras
+pid <- \(p) strtoi(substr(p, 2, 4), 36)
+meta <- meta |> mutate(era = if_else(pid(plate) < pid("A213"), "Plates before A213", "Plate A213 and after"))
 uq <- t(as.matrix(rsem[, -(1:3)]))                           # genes x samples
 colnames(uq) <- meta$bcr_patient_barcode
 
@@ -80,10 +83,15 @@ grp <- meta |> left_join(feat |> select(sample_id, ER), by = "sample_id") |>
   mutate(group = case_when(sample_type != "Primary Tumor" ~ sample_type,
                            !is.na(ER) ~ paste("Tumor ER", if_else(ER == "Positive", "+", "-")),
                            TRUE ~ "Tumor ER unknown"))
-p <- as_tibble(pa$x) |> bind_cols(grp) |>
-  ggplot(aes(PC1, PC2, color = group)) + geom_point(size = 0.8, alpha = 0.7) +
-  labs(x = paste0("PC1 (", pa$pve[1], "%)"), y = paste0("PC2 (", pa$pve[2], "%)"), color = NULL) + theme_bw()
-ggsave(file.path(out, "pca_all_samples.png"), p, width = 5.5, height = 4)
+basal <- c("KRT5", "KRT14", "KRT17", "FOXC1")                 # basal-like markers
+grp$basal_score <- colMeans(vmat[basal, ] - rowMeans(vmat[basal, ]))
+pdat <- as_tibble(pa$x) |> bind_cols(grp)
+axes <- labs(x = paste0("PC1 (", pa$pve[1], "%)"), y = paste0("PC2 (", pa$pve[2], "%)"))
+p1 <- ggplot(pdat, aes(PC1, PC2, color = group)) + geom_point(size = 0.8, alpha = 0.7) + axes +
+  labs(color = NULL) + theme_bw()
+p2 <- ggplot(pdat, aes(PC1, PC2, color = basal_score)) + geom_point(size = 0.8, alpha = 0.7) + axes +
+  scale_color_viridis_c(name = "Basal score") + theme_bw()
+ggsave(file.path(out, "pca_all_samples.png"), patchwork::wrap_plots(p1, p2), width = 11, height = 4)
 
 # Primary tumors (clinical associations)
 pt <- meta$sample_type == "Primary Tumor"
@@ -93,16 +101,18 @@ robust <- apply(abs(cor(pp$x, lg$x)), 1, max)                # best |r| match pe
 write_csv(tibble(PC = paste0("PC", 1:5), pct_var = pp$pve, max_abs_r_log2 = round(robust, 2)),
           file.path(out, "pca_variance.csv"))
 
+pct_normal <- meta |> group_by(plate) |> summarise(`Plate % normal` = 100 * mean(sample_type == "Adjacent Normal"))
 dat <- as_tibble(pp$x) |>
   mutate(sample_id = meta$sample_id[pt], Plate = meta$plate[pt], `Tissue source site` = meta$tss[pt],
-         `UQ-scaled total` = meta$uq_total[pt]) |>
+         Era = meta$era[pt], `UQ-scaled total` = meta$uq_total[pt]) |>
+  left_join(pct_normal, by = c("Plate" = "plate")) |>
   left_join(feat, by = "sample_id")
 write_csv(dat, file.path(out, "tumor_pcs_features.csv"))      # unlumped; used by 01.1
-dat <- dat |> mutate(across(where(is.character) & !sample_id,      # rare levels (<10) -> "Other"
+dat <- dat |> mutate(across(where(is.character) & !c(sample_id, Plate),   # rare levels (<10) -> "Other"
                             \(x) as.character(fct_lump_min(x, 10, other_level = "Other"))))
 
 # ---- Association: adjusted R^2 of PC ~ feature (lm) ----
-technical <- c("Plate", "Tissue source site", "UQ-scaled total", "Sample weight")
+technical <- c("Plate", "Era", "Plate % normal", "Tissue source site", "UQ-scaled total", "Sample weight")
 features <- setdiff(names(dat), c(paste0("PC", 1:5), "sample_id"))
 features <- features[map_int(features, \(f) n_distinct(na.omit(dat[[f]]))) > 1]   # need >=2 levels
 assoc <- expand_grid(PC = paste0("PC", 1:5), feature = features) |>
@@ -122,12 +132,18 @@ p <- assoc |> mutate(feature = fct_reorder(feature, adj_r2, max), adj_r2 = pmax(
   labs(x = NULL, y = NULL) + theme_minimal()
 ggsave(file.path(out, "pc_clinical_heatmap.png"), p, width = 6.5, height = 6.5)
 
-# ---- Plate beyond biology: partial R^2 of plate given ER, HER2 IHC, histology, FGA ----
-bio <- dat |> select(starts_with("PC"), Plate, ER, `HER2 IHC`, Histology, `Fraction genome altered`) |> drop_na()
+# ---- Batch beyond biology: adjusted partial R^2 given ER, HER2 IHC, histology, FGA ----
+bio <- dat |> select(starts_with("PC"), Plate, Era, `Plate % normal`, ER, `HER2 IHC`, Histology,
+                     `Fraction genome altered`) |> drop_na()
+adj_partial <- \(a, b) 1 - (deviance(b) / df.residual(b)) / (deviance(a) / df.residual(a))   # df-adjusted
 plate_partial <- map_dfr(paste0("PC", 1:5), \(pc) {
   f0 <- lm(reformulate(c("ER", "`HER2 IHC`", "Histology", "`Fraction genome altered`"), pc), bio)
-  f1 <- update(f0, . ~ . + Plate)
-  tibble(PC = pc, n = nrow(bio), partial_r2 = 1 - deviance(f1) / deviance(f0), p = anova(f0, f1)$`Pr(>F)`[2])
+  fe <- update(f0, . ~ . + Era)
+  tibble(PC = pc, n = nrow(bio),
+         `Plate % normal` = adj_partial(f0, update(f0, . ~ . + `Plate % normal`)),
+         Era = adj_partial(f0, fe),
+         Plate = adj_partial(f0, update(f0, . ~ . + Plate)),
+         `Plate beyond era` = adj_partial(fe, update(fe, . ~ . + Plate)))
 })
 write_csv(plate_partial, file.path(out, "plate_partial_r2.csv"))
 print(plate_partial)

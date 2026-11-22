@@ -19,4 +19,4 @@ Run from repo root (`Rscript analyses/<script>.R`); outputs go to `results/<scri
 | Step | Script | Purpose |
 |---|---|---|
 | 1 | `analyses/01.0_qc_vst_pca.R` | QC, DESeq2 VST, PCA, PC1–5 vs. clinical/technical features |
-| 1 | `analyses/01.1_plate_correction.R` | Plate effect: pool small plates, remove with limma, check ER/PR/HER2 preserved |
+| 1 | `analyses/01.1_plate_correction.R` | Plate/era assessment: composition, era balance, correction test (not applied) |

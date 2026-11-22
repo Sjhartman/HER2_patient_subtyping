@@ -25,7 +25,10 @@
 ## Report
 - `report.Rmd` → `report.html` (R Markdown).
 - Opening statement: Claude Code was run in manual mode using Opus 5.5.
+- Two parts: Main results and Supplement (supporting/technical detail, e.g. batch artifacts). Supplementary items are numbered S1, S2, … (e.g. **(Figure S1)**).
 - Figures and tables numbered separately, with succinct legends.
+- References section with PMIDs; cite inline as [n]. Verify every reference exists.
+- No plate/era batch correction (era is confounded with sample type and histology); see report Step 1.3.
 - Every figure/table is cited in the text with bolded parentheses, e.g. **(Figure 1)**, **(Table 2)**.
 
 ## Outline (challenge steps 1–5)

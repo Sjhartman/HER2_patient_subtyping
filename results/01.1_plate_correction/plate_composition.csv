@@ -1,0 +1,44 @@
+Plate,Era,Normal,Tumor,Metastasis,Total,% Normal,% Tumor,% Metastasis
+A00Z,Plates before A213,0,89,0,89,0,100,0
+A034,Plates before A213,0,91,0,91,0,100,0
+A056,Plates before A213,0,47,0,47,0,100,0
+A084,Plates before A213,0,46,0,46,0,100,0
+A089,Plates before A213,21,0,0,21,100,0,0
+A109,Plates before A213,0,39,0,39,0,100,0
+A10J,Plates before A213,0,26,0,26,0,100,0
+A10U,Plates before A213,0,2,0,2,0,100,0
+A115,Plates before A213,5,87,0,92,5.4,94.6,0
+A12D,Plates before A213,16,42,2,60,26.7,70,3.3
+A12P,Plates before A213,15,42,1,58,25.9,72.4,1.7
+A137,Plates before A213,7,16,0,23,30.4,69.6,0
+A13Q,Plates before A213,15,72,0,87,17.2,82.8,0
+A144,Plates before A213,6,40,0,46,13,87,0
+A14D,Plates before A213,5,24,0,29,17.2,82.8,0
+A14M,Plates before A213,3,32,0,35,8.6,91.4,0
+A157,Plates before A213,9,27,0,36,25,75,0
+A169,Plates before A213,3,46,0,49,6.1,93.9,0
+A16F,Plates before A213,1,29,0,30,3.3,96.7,0
+A17B,Plates before A213,2,8,0,10,20,80,0
+A180,Plates before A213,0,13,0,13,0,100,0
+A18M,Plates before A213,0,17,0,17,0,100,0
+A19E,Plates before A213,1,0,0,1,100,0,0
+A19W,Plates before A213,1,10,0,11,9.1,90.9,0
+A213,Plate A213 and after,0,10,2,12,0,83.3,16.7
+A21T,Plate A213 and after,1,12,0,13,7.7,92.3,0
+A22K,Plate A213 and after,0,18,0,18,0,100,0
+A22U,Plate A213 and after,0,10,0,10,0,100,0
+A239,Plate A213 and after,0,15,0,15,0,100,0
+A24H,Plate A213 and after,0,15,1,16,0,93.8,6.2
+A266,Plate A213 and after,0,21,0,21,0,100,0
+A26B,Plate A213 and after,0,1,0,1,0,100,0
+A27Q,Plate A213 and after,0,15,0,15,0,100,0
+A28M,Plate A213 and after,0,21,0,21,0,100,0
+A29R,Plate A213 and after,0,14,0,14,0,100,0
+A31O,Plate A213 and after,0,12,0,12,0,100,0
+A32P,Plate A213 and after,0,11,1,12,0,91.7,8.3
+A32Y,Plate A213 and after,0,2,0,2,0,100,0
+A33J,Plate A213 and after,0,16,0,16,0,100,0
+A352,Plate A213 and after,0,10,0,10,0,100,0
+A36F,Plate A213 and after,0,10,0,10,0,100,0
+A41B,Plate A213 and after,0,34,0,34,0,100,0
+A466,Plate A213 and after,1,1,0,2,50,50,0
