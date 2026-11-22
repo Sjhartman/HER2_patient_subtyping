@@ -100,6 +100,8 @@ Plate and era still explain PC3–4 variance after accounting for ER, HER2 IHC, 
 2. Plates with very few tumors are distorted by correction **(Table S3)**.
 3. Expression of the key genes (ESR1, PGR, ERBB2, GRB7) barely depends on plate **(Figure S3)**.
 
+If technical replicates of the same samples run across plates were available, plate effects could be estimated directly, separately from biology, and plate correction would be reconsidered [5].
+
 **Downstream handling:**
 
 - **Steps 2 and 4** use uncorrected VST, with era (one term) as a sensitivity covariate.
