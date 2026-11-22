@@ -33,7 +33,10 @@ balance <- bind_rows(
   counts,
   row("Adjacent normal (% of normal + tumor)", nt$sample_type == "Adjacent Normal", nt$era),
   with(filter(tum, !is.na(Histology)), row("Lobular histology", Histology == "Breast Invasive Lobular Carcinoma", Era)),
+  with(tum, row("ERBB2 copy number missing", is.na(`ERBB2 CN (GISTIC)`), Era)),
   with(filter(tum, !is.na(`ERBB2 CN (GISTIC)`)), row("ERBB2 amplified (GISTIC 2)", `ERBB2 CN (GISTIC)` == 2, Era)),
+  with(filter(tum, !is.na(`ERBB2 CN (GISTIC)`), Histology == "Breast Invasive Ductal Carcinoma"),
+       row("ERBB2 amplified, ductal only", `ERBB2 CN (GISTIC)` == 2, Era)),
   with(filter(tum, !is.na(ER)), row("ER positive", ER == "Positive", Era)),
   with(filter(tum, !is.na(PR)), row("PR positive", PR == "Positive", Era)),
   with(filter(tum, !is.na(`HER2 IHC`)), row("HER2 IHC positive", `HER2 IHC` == "Positive", Era)))

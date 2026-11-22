@@ -10,7 +10,8 @@ meta <- rsem |> select(1:3) |>
   mutate(sample_id = substr(bcr_patient_barcode, 1, 15),
          plate = substr(bcr_patient_barcode, 22, 25),        # sequencing plate (batch)
          tss = substr(bcr_patient_barcode, 6, 7))            # tissue source site
-# Plate IDs are sequential base-36 codes (all start with "A"); a gap after A19W splits two processing eras
+# Plate IDs are sequential base-36 codes (all start with "A"). Era boundary at A213: tumor PC3/PC4 plate means
+# step up there and normals stop (110/112 before it); see 01.1 plate_drift.png
 pid <- \(p) strtoi(substr(p, 2, 4), 36)
 meta <- meta |> mutate(era = if_else(pid(plate) < pid("A213"), "Plates before A213", "Plate A213 and after"))
 uq <- t(as.matrix(rsem[, -(1:3)]))                           # genes x samples

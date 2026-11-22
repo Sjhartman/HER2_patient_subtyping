@@ -4,7 +4,9 @@ Metastasis (n),3,4,NA
 Primary Tumor (n),845,248,NA
 Adjacent normal (% of normal + tumor),11.5%,0.8%,1.1e-9
 Lobular histology,11.8%,42.9%,9.9e-25
+ERBB2 copy number missing,4.3%,39.1%,9.3e-41
 ERBB2 amplified (GISTIC 2),13.5%,6.6%,0.021
+"ERBB2 amplified, ductal only",14.6%,13.3%,1
 ER positive,77.2%,77.4%,1
 PR positive,67.3%,66.5%,0.88
 HER2 IHC positive,18.9%,15.4%,0.29
