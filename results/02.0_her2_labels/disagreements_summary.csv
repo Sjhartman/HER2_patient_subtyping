@@ -1,0 +1,9 @@
+type,Positive,Negative,Conflict
+Clinical HER2+ vs ERBB2 not amplified (GISTIC < 2),66,0,0
+Clinical HER2- vs ERBB2 amplified (GISTIC 2),0,11,0
+"IHC 0/1+ (score, or reported Negative) vs FISH Positive",3,0,0
+"IHC 3+ (score, or reported Positive) vs FISH Negative",7,0,1
+IHC score 1+ vs reported IHC status Positive,0,0,11
+IHC score 2+ vs reported IHC status Positive,0,0,12
+IHC score 3+ vs reported IHC status Equivocal,0,0,1
+IHC score 3+ vs reported IHC status Negative,0,0,2

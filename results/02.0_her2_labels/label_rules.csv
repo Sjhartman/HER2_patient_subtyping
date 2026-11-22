@@ -1,0 +1,21 @@
+her2_status,rule,n
+Conflict,Score and category disagree,26
+Missing,No IHC or FISH,117
+Negative,IHC score 0/1+,223
+Negative,IHC category Negative,211
+Negative,"IHC score 2+, FISH Negative",132
+Negative,"IHC score 0/1+, FISH Negative",94
+Negative,FISH only Negative,57
+Negative,"IHC category Negative, FISH Negative",31
+Negative,"IHC category Equivocal, FISH Negative",5
+Positive,IHC score 3+,60
+Positive,"IHC score 2+, FISH Positive",36
+Positive,IHC category Positive,31
+Positive,"IHC score 3+, FISH Positive",23
+Positive,FISH only Positive,9
+Positive,"IHC category Positive, FISH Positive",7
+Positive,"IHC score 3+, FISH Negative",4
+Positive,"IHC category Positive, FISH Negative",3
+Positive,"IHC score 0/1+, FISH Positive",3
+Unresolved,IHC score 2+,19
+Unresolved,IHC category Equivocal,2

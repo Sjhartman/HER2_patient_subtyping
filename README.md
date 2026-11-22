@@ -20,6 +20,7 @@ Run from repo root (`Rscript analyses/<script>.R`); outputs go to `results/<scri
 |---|---|---|
 | 1 | `analyses/01.0_qc_vst_pca.R` | QC, DESeq2 VST, PCA, PC1–5 vs. clinical/technical features |
 | 1 | `analyses/01.1_plate_correction.R` | Plate/era assessment: composition, era balance, correction test (not applied) |
+| 2 | `analyses/02.0_her2_labels.R` | Clinical HER2 status (ASCO/CAP 2018), HER2-low categories, IHC-only target, label disagreements |
 
 ## Key notes for later steps (from Step 1)
 
@@ -44,6 +45,16 @@ Run from repo root (`Rscript analyses/<script>.R`); outputs go to `results/<scri
 - **HER2-low** (ADC-relevant): `HER2 ihc score` 0 / 1+ / 2+ / 3+ = 61 / 273 / 200 / 90 (484 missing). Label conflicts exist (11 tumors scored 1+ but labelled Positive, 2 scored 3+ but labelled Negative). 246 "Negative" tumors have no score. Build an explicit label table with rules and report exclusions.
 - Sensitivity covariates: era **plus histology** (era alone absorbs lobular biology); also report performance by era. Include era/purity for the CN model too.
 - Lead: tumor TCGA-E9-A1NC-01 is HER2 IHC+ but ERBB2 mRNA low (RNA/IHC discordance).
+
+**Report notes for 02.0 figure (`erbb2_by_ihc.png`) legend**
+- Tumors without a numeric IHC score (n = 473) are not shown; most (290) still have a reported IHC status (`IHC-HER2`: 242 Negative, 41 Positive, 7 Equivocal), which is used in the labels and later steps.
+- ERBB2 VST values below 10 are displayed at 10 (n = 2 plotted).
+
+**PI decisions for 02.1**
+- Equivocal: two steps. Main = IHC-only target (3+ vs 0/1+, equivocal excluded); sensitivity = FISH-resolved clinical status.
+- Exploratory first: test clinical metadata (race, age, sex, plus ER/PR, histology, era) for association with HER2 status, including separate interaction models. Include only variables that help.
+- Models: ERBB2 mRNA; GISTIC CN; both; multimodal molecular (+ ER, PR status; with vs without 17q12 amplicon genes GRB7/STARD3/PGAP3); and molecular + clinical if exploration supports it.
+- CV: k = 3 folds while exploring; k = 10 for the final selected model.
 
 **Plan for Steps 3–5**
 - Step 3: PAM on uncorrected VST (refilter genes on tumors). Test clusters vs plate/era **within histology** (e.g. CMH or ductal-only). Check stability.
