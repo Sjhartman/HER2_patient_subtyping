@@ -51,5 +51,5 @@ Run from repo root (`Rscript analyses/<script>.R`); outputs go to `results/<scri
 - Step 5: tumor vs normal **within patient** (paired) on uncorrected VST; never apply plate correction including normals (A089/A19E are normal-only plates).
 
 ## Workflow
-- PI reviews all code; reviewers (`.claude/agents/`) run after each step. If the agent types aren't loaded (session started outside the repo), run them as general-purpose agents told to read and adopt the agent `.md` file.
+- PI reviews all code; three reviewers (`.claude/agents/`: continuity, technical, reference-master) run after each step. If the agent types aren't loaded (session started outside the repo), run them as general-purpose agents told to read and adopt the agent `.md` file.
 - Report rules are in `CLAUDE.md` (numbering, bold citations, S-numbered supplement, verified references with PMIDs).

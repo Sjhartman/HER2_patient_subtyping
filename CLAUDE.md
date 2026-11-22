@@ -27,7 +27,7 @@
 - Opening statement: Claude Code was run in manual mode using Opus 5.5.
 - Two parts: Main results and Supplement (supporting/technical detail, e.g. batch artifacts). Supplementary items are numbered S1, S2, … (e.g. **(Figure S1)**).
 - Figures and tables numbered separately, with succinct legends.
-- References section with PMIDs; cite inline as [n]. Verify every reference exists.
+- References section with PMIDs and DOI links (`DOI: [10.x/y](https://doi.org/10.x/y)`); cite inline as [n], numbered by first citation. Verify every reference exists. The script at the end of `report.Rmd` auto-links [n] and (Figure/Table X) citations, with back-links.
 - No plate/era batch correction (era is confounded with sample type and histology); see report Step 1.3.
 - Every figure/table is cited in the text with bolded parentheses, e.g. **(Figure 1)**, **(Table 2)**.
 
@@ -41,4 +41,5 @@
 ## Reviewers (`.claude/agents/`)
 - `continuity-reviewer` — logical flow, cancer biology, supporting/conflicting references, figure/table citations.
 - `technical-reviewer` — methods are correct and current (well-recognized best practice).
-- Run both after each step's script and report section are drafted; summarize their findings for the PI briefly.
+- `reference-master` — references are real, DOIs/PMIDs resolve, formatting is consistent, and each [n] supports its claim.
+- Run all three after each step's script and report section are drafted; summarize their findings for the PI briefly.
