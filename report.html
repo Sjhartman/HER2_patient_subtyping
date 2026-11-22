@@ -1497,11 +1497,11 @@ upper-quartile (UQ) scaled RSEM rather than raw counts, so read depth is
 already scaled out <strong>(Figure S1)</strong>.</p>
 <p>Values were rounded, and genes with ≥10 counts in ≥10% of samples
 were kept (16,453 genes). A blind DESeq2 variance-stabilizing transform
-(VST) was then applied. DESeq2’s size factors sit near 1, so they change
-little beyond the UQ scaling. Because the inputs are scaled rather than
-true counts, VST is an approximate stabilizer here, and later
-differential expression uses limma on VST values. No sample was an
-outlier.</p>
+(VST) was then applied [1]. DESeq2’s size factors sit near 1, so they
+change little beyond the UQ scaling. Because the inputs are scaled
+rather than true counts, VST is an approximate stabilizer here, and
+later differential expression uses limma on VST values [2]. No sample
+was an outlier.</p>
 </div>
 <div id="sources-of-variation" class="section level3">
 <h3>1.2 Sources of variation</h3>
@@ -1522,9 +1522,9 @@ normals also score high because of myoepithelial cells.
 technical features (adjusted R²) <strong>(Figure 2)</strong>:</p>
 <ul>
 <li><strong>PC1 (16.6%)</strong> is the ER/PR axis (luminal vs. basal),
-consistent with the TCGA intrinsic subtypes [1].</li>
+consistent with the TCGA intrinsic subtypes [3].</li>
 <li><strong>PC2 (7.9%)</strong> tracks fraction genome altered and
-lobular vs. ductal histology, and possibly tumor purity [2, 3].</li>
+lobular vs. ductal histology, and possibly tumor purity [4, 5].</li>
 <li><strong>PC3 (4.3%)</strong> mixes HER2 biology (ERBB2 copy number,
 HER2 IHC) with plate.</li>
 <li><strong>PC4 (3.6%)</strong> is mainly plate and processing era.
@@ -1535,7 +1535,7 @@ firmly <strong>(Table S1)</strong>.</p>
 <p>HER2 IHC has no association with PC1. Its ERBB2 copy-number
 association (0.10) likely reflects copy losses in basal tumors rather
 than amplification. HER2+ tumors therefore occur in both ER+ and ER−
-disease, and clinical HER2+ differs from the HER2-enriched subtype [4].
+disease, and clinical HER2+ differs from the HER2-enriched subtype [6].
 Global variance alone cannot define HER2+, which motivates the targeted
 definitions in Step 2.</p>
 <div class="figure">
@@ -1552,15 +1552,15 @@ label. Era: plates before A213 vs. plate A213 and after.
 <h3>1.3 Processing batch</h3>
 <p>Plate effects are mainly a step between two processing eras at plate
 A213, which is also where adjacent normals stop being sequenced
-<strong>(Figure S2)</strong>. This is consistent with plate effects in
-TCGA being confounded with processing time [5].</p>
+<strong>(Figure S2)</strong>. This is consistent with large plate
+effects in TCGA RNA-seq [7].</p>
 <p>The eras differ in more than processing <strong>(Table
 1)</strong>:</p>
 <ul>
 <li><strong>Normals:</strong> 110 of 112 normals are in the earlier era
 <strong>(Table S2)</strong>.</li>
 <li><strong>Histology:</strong> the later era is much more often lobular
-(43% vs. 12%), consistent with TCGA’s expanded lobular cohort [2].</li>
+(43% vs. 12%), consistent with TCGA’s expanded lobular cohort [4].</li>
 <li><strong>ERBB2 amplification:</strong> the apparent drop (13.5% to
 6.6%) disappears within ductal tumors, and copy number is missing for
 39% of later tumors.</li>
@@ -1661,14 +1661,14 @@ S4)</strong>. There are three reasons:</p>
 <ol style="list-style-type: decimal">
 <li>Era is confounded with sample type and histology <strong>(Table
 1)</strong>, so correction would remove real biology. Protecting the
-labels instead would overstate group differences [6].</li>
+labels instead would overstate group differences [8].</li>
 <li>Correction distorts plates holding few tumors <strong>(Table
 S4)</strong>.</li>
 <li>ER/PR/HER2 signal barely depends on plate <strong>(Figure S3, Figure
 S4)</strong>.</li>
 </ol>
 <p>Replicate-based correction (RUV-III with pseudo-replicates, PRPS) is
-the principled option for TCGA [5]. If technical replicates run across
+the principled option for TCGA [7]. If technical replicates run across
 plates were available, plate correction would be reconsidered.</p>
 <p><strong>Downstream handling:</strong></p>
 <ul>
@@ -2340,7 +2340,7 @@ model that already includes era.</caption>
 <div id="s4.-plate-correction-test-not-applied" class="section level2">
 <h2>S4. Plate correction test (not applied)</h2>
 <p>Plate was removed from primary-tumor VST with
-<code>limma::removeBatchEffect</code> [7] in three ways:</p>
+<code>limma::removeBatchEffect</code> [2] in three ways:</p>
 <ul>
 <li><strong>All 41 plates.</strong></li>
 <li><strong>Pooled plates:</strong> each plate with &lt;10 tumors was
@@ -2357,7 +2357,7 @@ not shown. The real check is whether biology survives:</p>
 0.16 when protected), so plate partly masked HER2 signal rather than
 creating it.</li>
 <li><strong>Marker genes</strong> keep their association with clinical
-labels, and protecting the labels inflates them, as expected [6]
+labels, and protecting the labels inflates them, as expected [8]
 <strong>(Figure S4)</strong>.</li>
 </ul>
 <div class="figure">
@@ -2604,6 +2604,12 @@ after pooled-plate correction.</caption>
 <div id="references" class="section level1">
 <h1>References</h1>
 <ol style="list-style-type: decimal">
+<li>Love MI, Huber W, Anders S. Moderated estimation of fold change and
+dispersion for RNA-seq data with DESeq2. <em>Genome Biol</em>
+2014;15:550. PMID 25516281. DOI: <a href="https://doi.org/10.1186/s13059-014-0550-8">10.1186/s13059-014-0550-8</a>.</li>
+<li>Ritchie ME, et al. limma powers differential expression analyses for
+RNA-sequencing and microarray studies. <em>Nucleic Acids Res</em>
+2015;43:e47. PMID 25605792. DOI: <a href="https://doi.org/10.1093/nar/gkv007">10.1093/nar/gkv007</a>.</li>
 <li>Cancer Genome Atlas Network. Comprehensive molecular portraits of
 human breast tumours. <em>Nature</em> 2012;490:61–70. PMID 23000897.
 DOI: <a href="https://doi.org/10.1038/nature11412">10.1038/nature11412</a>.</li>
@@ -2621,9 +2627,6 @@ sequencing data with PRPS. <em>Nat Biotechnol</em> 2023;41:82–95. PMID
 while retaining group differences may lead to exaggerated confidence in
 downstream analyses. <em>Biostatistics</em> 2016;17:29–39. PMID
 26272994. DOI: <a href="https://doi.org/10.1093/biostatistics/kxv027">10.1093/biostatistics/kxv027</a>.</li>
-<li>Ritchie ME, et al. limma powers differential expression analyses for
-RNA-sequencing and microarray studies. <em>Nucleic Acids Res</em>
-2015;43:e47. PMID 25605792. DOI: <a href="https://doi.org/10.1093/nar/gkv007">10.1093/nar/gkv007</a>.</li>
 </ol>
 <!-- Cross-references: in-text (Figure/Table X) citations link to the item; captions link back to each citation -->
 <style>
