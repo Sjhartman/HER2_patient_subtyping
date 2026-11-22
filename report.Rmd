@@ -10,39 +10,95 @@ output:
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 library(tidyverse)
 r1 <- "results/01.0_qc_vst_pca"
+r11 <- "results/01.1_plate_correction"
 ```
 
 *Claude Code was run in manual mode using Opus 5.5. The PI reviewed all code and analytical choices.*
 
 ## 1. QC and normalization
 
-**Input.** RNA-seq for 1,212 samples (1,093 primary tumor, 112 adjacent normal, 7 metastasis) across 20,502 genes. The values are not raw counts: the upper quartile of non-zero values is ~1000 in every sample, which matches TCGA's upper-quartile (UQ) normalized RSEM output **(Figure 1)**. Read depth is therefore already scaled out upstream.
+### 1.1 Input and normalization
 
-**Normalization.** Values were rounded to integers, and genes with ≥10 counts in ≥10% of samples were kept (16,453 genes). DESeq2 median-of-ratios size factors were then estimated; these sit near 1 (0.79–1.11), correcting residual composition differences left after UQ scaling **(Figure 1)**. Finally a blind variance-stabilizing transform (VST) was applied. No sample was a clear outlier on totals, genes detected or size factor, so all samples were kept.
+**Input.** RNA-seq for 1,212 samples (1,093 primary tumor, 112 adjacent normal, 7 metastasis) across 20,502 genes. The values are not raw counts: the upper quartile of non-zero values is ~1000 in every sample, which matches TCGA's upper-quartile (UQ) scaled RSEM output **(Figure 1)**. Read depth is therefore already scaled out upstream.
+
+**Normalization.** Values were rounded to integers, and genes with ≥10 counts in ≥10% of samples were kept (16,453 genes). DESeq2 median-of-ratios size factors sit near 1 (0.79–1.11), so they change little beyond the UQ scaling **(Figure 1)**. A blind variance-stabilizing transform (VST) was then applied. Because the rounded values are scaled counts rather than true counts, VST is used here as an approximate variance stabilizer. For the same reason, later differential expression uses limma on VST values rather than DESeq2 count tests. No sample was a clear outlier on totals, genes detected or size factor, so all samples were kept.
 
 ```{r fig1, fig.cap = "**Figure 1.** Per-sample QC by sample type: UQ-scaled total, upper quartile of non-zero values, genes detected, and DESeq2 size factor."}
 knitr::include_graphics(file.path(r1, "qc_boxplots.png"))
 ```
 
-**PCA.** On the top 2,000 most variable genes, adjacent normals separate from tumors and a distinct tumor cluster forms (likely basal-like) **(Figure 2)**.
+### 1.2 Sources of variation
 
-```{r fig2, fig.cap = "**Figure 2.** PCA of all samples (VST, top 2,000 variable genes), colored by sample type.", out.width = "60%"}
+On the top 2,000 most variable genes, adjacent normals separate from tumors, and ER-negative tumors form a distinct cluster consistent with the basal-like subtype **(Figure 2)**.
+
+```{r fig2, fig.cap = "**Figure 2.** PCA of all samples (VST, top 2,000 variable genes), colored by sample type and, for primary tumors, ER status by IHC.", out.width = "60%"}
 knitr::include_graphics(file.path(r1, "pca_all_samples.png"))
 ```
 
-To link expression structure to clinical features, PCA was repeated on primary tumors only. Each of PC1–5 was regressed on each clinical and technical feature, with R² as the effect size and Benjamini-Hochberg adjusted p-values **(Figure 3)**. Categorical levels with <10 samples were set to missing.
+PCA was then repeated on primary tumors only. Each of PC1–5 was regressed on each clinical and technical feature, using adjusted R² because plate (41 levels) and tissue source site have many levels **(Figure 3)**. Categorical levels with <10 samples were pooled into "Other", and ERBB2 copy number (GISTIC, −2 to 2) was treated as categorical. HER2 FISH is available for only 411 tumors, mostly IHC-equivocal cases, so its association reflects a selected subset.
 
-```{r fig3, fig.cap = "**Figure 3.** Variance in each primary-tumor PC explained by clinical and technical features (R², linear model). Percent variance per PC is shown under each axis label. \\* BH-adjusted p < 0.05.", out.width = "75%"}
+```{r fig3, fig.cap = "**Figure 3.** Variance in each primary-tumor PC explained by clinical and technical features (adjusted R², linear model; negative values shown as 0). Percent variance per PC is shown under each axis label.", out.width = "75%"}
 knitr::include_graphics(file.path(r1, "pc_clinical_heatmap.png"))
 ```
 
 ```{r tab1}
 pve <- read_csv(file.path(r1, "pca_variance.csv"))
+pp <- read_csv(file.path(r1, "plate_partial_r2.csv"))
 read_csv(file.path(r1, "pc_clinical_assoc.csv")) |>
-  filter(padj < 0.05) |> group_by(PC) |> slice_max(r2, n = 3) |>
-  summarise(`Top features (R²)` = paste0(feature, " (", round(r2, 2), ")", collapse = "; ")) |>
-  left_join(pve, by = "PC") |> select(PC, `% variance` = pct_var, `Top features (R²)`) |>
-  knitr::kable(caption = "**Table 1.** Percent variance and the three strongest significant feature associations for PC1–5 (primary tumors).")
+  group_by(PC) |> slice_max(adj_r2, n = 3) |>
+  summarise(`Top features (adj. R²)` = paste0(feature, " (", round(adj_r2, 2), ")", collapse = "; ")) |>
+  left_join(pve, by = "PC") |> left_join(pp, by = "PC") |>
+  transmute(PC, `% variance` = pct_var, `|r| vs log2(UQ+1) PC` = max_abs_r_log2, `Top features (adj. R²)`,
+            `Plate partial R² (given biology)` = round(partial_r2, 2)) |>
+  knitr::kable(caption = "**Table 1.** Primary-tumor PC1–5: percent variance; best match to PCs from a log2(UQ+1) transform; strongest feature associations; and variance explained by plate after accounting for ER, HER2 IHC, histology and fraction genome altered.")
 ```
 
-**Interpretation.** PC1 (16.6%) is the ER/PR hormone-receptor axis (luminal vs. basal). PC2 (7.9%) tracks genomic instability (fraction genome altered) and histology (lobular vs. ductal). PC3 (4.3%) is the first axis tied to HER2, through IHC and FISH status, but it also carries a plate effect. PC4 and PC5 are mostly technical (plate, tissue source site) **(Table 1)**. HER2 biology is therefore a minor source of global variance, which supports a targeted gene set in later steps rather than whole-transcriptome clustering. Plate effects on PC3–4 will need checking before clustering (Step 3).
+**Interpretation.**
+
+- **PC1 (16.6%)** is the ER/PR hormone-receptor axis (luminal vs. basal), consistent with the TCGA intrinsic subtypes (TCGA Network, *Nature* 2012).
+- **PC2 (7.9%)** tracks fraction genome altered and histology (lobular vs. ductal). It may also reflect tumor purity, since lobular tumors are often lower purity and copy-number quiet (Ciriello et al., *Cell* 2015; Aran et al., *Nat Commun* 2015).
+- **PC3 (4.3%)** mixes HER2 biology (ERBB2 copy number, HER2 IHC) with plate.
+- **PC4 (3.6%)** is mainly plate. **PC5** is weak and largely unexplained.
+
+Plate still explains 12% of PC3 and 23% of PC4 after accounting for biology **(Table 1)**, so it is a true batch effect. PC1 is stable across transforms (|r| 0.99), PC2 mostly so (0.92), while PC3–4 shift (0.82–0.83) **(Table 1)**, so only PC1–2 are interpreted firmly.
+
+HER2 status has no association with PC1 **(Figure 3)**, which fits HER2+ tumors occurring in both ER+ and ER− disease. Clinical HER2+ is also not the same as the HER2-enriched intrinsic subtype (Prat & Perou, *Mol Oncol* 2011). Global variance alone therefore cannot define HER2+, which motivates the targeted clinical and molecular definitions in Step 2.
+
+### 1.3 Plate correction
+
+The plate effect drifts with processing order: early plates score low on PC3/PC4 and later plates score high **(Figure 4)**. Five plates hold fewer than 10 tumors (14 samples), including two plates with a single sample. Regressing out a plate mean estimated from 1–2 samples would also remove those samples' own biology. Each small plate was therefore pooled into the nearest large plate by processing order.
+
+```{r fig4, fig.cap = "**Figure 4.** Mean primary-tumor PC3 and PC4 scores per plate, in processing order. Point size is the number of tumors; red marks plates with <10 tumors."}
+knitr::include_graphics(file.path(r11, "plate_drift.png"))
+```
+
+Plate was removed with `limma::removeBatchEffect` in three ways, and each was checked for whether ER, PR and HER2 biology survived:
+
+- all 41 plates;
+- pooled plates;
+- pooled plates with ER/PR/HER2 protected in the design.
+
+All three remove plate from PC1–5 while keeping the ER/PR (PC1) and HER2 IHC (PC3) associations **(Figure 5)**.
+
+```{r fig5, fig.cap = "**Figure 5.** Adjusted R² of primary-tumor PC1–5 with plate, ER, PR and HER2 IHC, before and after plate correction.", out.width = "95%"}
+knitr::include_graphics(file.path(r11, "pc_assoc_by_version.png"))
+```
+
+At the gene level, the marker genes were affected little by plate to begin with. Their associations with clinical labels are essentially unchanged by correction **(Figure 6)**. Protecting ER/PR/HER2 slightly inflates these associations, as expected when the labels are part of the correction model.
+
+```{r fig6, fig.cap = "**Figure 6.** Adjusted R² of marker genes (ESR1, PGR, ERBB2, GRB7) with their clinical label and with plate, for each correction.", out.width = "75%"}
+knitr::include_graphics(file.path(r11, "marker_r2.png"))
+```
+
+The small plates show why pooling matters **(Table 2)**. The single ER-negative tumor on plate A26B has low ESR1 (6.2, against a median of 7.1 in ER− and 13.3 in ER+ tumors). The 41-plate correction raises it to 11.8, making it look ER-positive, while pooling keeps it at 6.6. The same tumor is HER2 IHC-positive but has low ERBB2 mRNA (11.8, against a median of 14.9 in IHC-positive tumors); this RNA/IHC discordance is followed up in Step 2.
+
+```{r tab2}
+read_csv(file.path(r11, "small_plate_samples.csv")) |>
+  select(Sample = sample_id, Plate, `Pooled into`, ER, `HER2 IHC`,
+         `ERBB2 raw` = ERBB2_Uncorrected, `ERBB2 41` = `ERBB2_Plate (41)`, `ERBB2 pooled` = `ERBB2_Plate (pooled)`,
+         `ESR1 raw` = ESR1_Uncorrected, `ESR1 41` = `ESR1_Plate (41)`, `ESR1 pooled` = `ESR1_Plate (pooled)`) |>
+  mutate(across(where(is.numeric), \(x) round(x, 1))) |>
+  knitr::kable(caption = "**Table 2.** Tumors on plates with <10 samples: ERBB2 and ESR1 (VST) uncorrected (raw), after 41-plate correction, and after pooled-plate correction.")
+```
+
+**Decision.** Step 3 clusters on VST data with the pooled plate effect removed, without protecting ER/PR/HER2. Leaving the labels out avoids building them into the clusters, and biology is preserved without them **(Figures 5–6)**. Steps 2 and 4 use uncorrected VST with plate as a covariate where needed.
