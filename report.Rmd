@@ -172,3 +172,48 @@ read_csv(file.path(r11, "small_plate_samples.csv")) |>
 5. Molania R, et al. Removing unwanted variation from large-scale RNA sequencing data with PRPS. *Nat Biotechnol* 2023;41:82–95. PMID 36109686.
 6. Nygaard V, Rødland EA, Hovig E. Methods that remove batch effects while retaining group differences may lead to exaggerated confidence in downstream analyses. *Biostatistics* 2016;17:29–39. PMID 26272994.
 7. Ritchie ME, et al. limma powers differential expression analyses for RNA-sequencing and microarray studies. *Nucleic Acids Res* 2015;43:e47. PMID 25605792.
+
+```{=html}
+<!-- Cross-references: in-text (Figure/Table X) citations link to the item; captions link back to each citation -->
+<style>
+  .xref-target:target, .xref-target.flash { outline: 3px solid #f0ad4e; outline-offset: 4px; }
+  a.xref:target { background: #fff3cd; }
+  .backrefs { font-size: 0.85em; margin-left: 0.4em; }
+  .backrefs a { margin-left: 0.3em; text-decoration: none; }
+</style>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const key = s => s.trim().replace(/\s+/g, "-").toLowerCase();   // "Figure S1" -> "figure-s1"
+  const back = {};
+  // Anchor each figure/table caption
+  document.querySelectorAll("p.caption, caption").forEach(c => {
+    const m = c.textContent.match(/^\s*(Figure|Table)\s+(S?\d+)\./);
+    if (!m) return;
+    const box = c.tagName === "CAPTION" ? c.closest("table") : (c.closest(".figure") || c.parentElement);
+    box.id = key(m[1] + " " + m[2]); box.classList.add("xref-target");
+    back[box.id] = document.createElement("span"); back[box.id].className = "backrefs";
+    c.appendChild(back[box.id]);
+  });
+  // Section targets for "Supplement S4"
+  const sec = {};
+  document.querySelectorAll("h2, h3").forEach(h => {
+    const m = h.textContent.match(/^\s*(S\d+)\./); const s = h.closest(".section");
+    if (m && s) sec[m[1]] = s.id;
+  });
+  // Link bold citations in the text
+  let k = 0;
+  document.querySelectorAll("strong").forEach(s => {
+    if (s.closest("caption, p.caption")) return;
+    const t = s.textContent.replace(/\s+/g, " ");
+    if (!/^\(.*\)$/.test(t)) return;
+    s.innerHTML = t.replace(/(Figure|Table)\s+(S?\d+)|Supplement\s+(S\d+)/g, (all, kind, num, sup) => {
+      const target = sup ? sec[sup] : key(kind + " " + num);
+      if (!target || (!sup && !back[target])) return all;
+      const ref = "ref-" + (++k);
+      if (!sup) back[target].insertAdjacentHTML("beforeend", `<a href="#${ref}" title="Back to text">↩${back[target].childElementCount + 1}</a>`);
+      return `<a class="xref" id="${ref}" href="#${target}">${all}</a>`;
+    });
+  });
+});
+</script>
+```
