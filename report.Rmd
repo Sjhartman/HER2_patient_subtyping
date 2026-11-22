@@ -11,10 +11,17 @@ knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 library(tidyverse)
 r1 <- "results/01.0_qc_vst_pca"
 r11 <- "results/01.1_plate_correction"
+r20 <- "results/02.0_her2_labels"
+r21 <- "results/02.1_rna_vs_dna"
+f3 <- \(x) formatC(x, format = "f", digits = 3)
+fp <- \(p) if_else(p < 0.001, "<0.001", formatC(p, format = "f", digits = 3))
 assoc <- read_csv(file.path(r1, "pc_clinical_assoc.csv"))
 pbio <- read_csv(file.path(r1, "plate_partial_r2.csv"))
 fish_n <- assoc |> filter(feature == "HER2 FISH") |> pull(n) |> first()
 pr <- \(pc, col) round(pbio[[col]][pbio$PC == pc], 2)
+# Fitted logistic coefficients (02.1), quoted in the text: b(model, term)
+cf <- read_csv(file.path(r21, "model_coefficients.csv"))
+b <- \(m, t) cf$beta[cf$model == m & cf$term == t]
 ```
 
 *Claude Code was run in manual mode using Opus 5.5. The PI reviewed all code and analytical choices.*
@@ -27,7 +34,7 @@ pr <- \(pc, col) round(pbio[[col]][pbio$PC == pc], 2)
 
 RNA-seq covers 1,212 samples (1,093 primary tumor, 112 adjacent normal, 7 metastasis) and 20,502 genes. The values are TCGA upper-quartile (UQ) scaled RSEM rather than raw counts, so read depth is already scaled out **(Figure S1)**.
 
-Values were rounded, and genes with ≥10 counts in ≥10% of samples were kept (16,453 genes). A blind DESeq2 variance-stabilizing transform (VST) was then applied [1]. DESeq2's size factors sit near 1, so they change little beyond the UQ scaling. Because the inputs are scaled rather than true counts, VST is an approximate stabilizer here, and later differential expression uses limma on VST values [2]. No sample was an outlier.
+Values were rounded, and genes with ≥10 counts in ≥10% of samples were kept (16,453 genes). A blind DESeq2 variance-stabilizing transform (VST) was then applied. DESeq2's size factors sit near 1, so they change little beyond the UQ scaling. Because the inputs are scaled rather than true counts, VST is an approximate stabilizer here, and later differential expression uses limma on VST values. No sample was an outlier.
 
 ### 1.2 Sources of variation
 
@@ -39,14 +46,14 @@ knitr::include_graphics(file.path(r1, "pca_all_samples.png"))
 
 Within primary tumors, PC1–5 were each regressed on clinical and technical features (adjusted R²) **(Figure 2)**:
 
-- **PC1 (16.6%)** is the ER/PR axis (luminal vs. basal), consistent with the TCGA intrinsic subtypes [3].
-- **PC2 (7.9%)** tracks fraction genome altered and lobular vs. ductal histology, and possibly tumor purity [4, 5].
+- **PC1 (16.6%)** is the ER/PR axis (luminal vs. basal), consistent with the TCGA intrinsic subtypes [1].
+- **PC2 (7.9%)** tracks fraction genome altered and lobular vs. ductal histology, and possibly tumor purity [2, 3].
 - **PC3 (4.3%)** mixes HER2 biology (ERBB2 copy number, HER2 IHC) with plate.
 - **PC4 (3.6%)** is mainly plate and processing era. **PC5** is weak.
 
 Only PC1–2 are stable across transforms, so only they are interpreted firmly **(Table S1)**.
 
-HER2 IHC has no association with PC1. Its ERBB2 copy-number association (0.10) likely reflects copy losses in basal tumors rather than amplification. HER2+ tumors therefore occur in both ER+ and ER− disease, and clinical HER2+ differs from the HER2-enriched subtype [6]. Global variance alone cannot define HER2+, which motivates the targeted definitions in Step 2.
+HER2 IHC has no association with PC1. Its ERBB2 copy-number association (0.10) likely reflects copy losses in basal tumors rather than amplification. HER2+ tumors therefore occur in both ER+ and ER− disease, and clinical HER2+ differs from the HER2-enriched subtype [4]. Global variance alone cannot define HER2+, which motivates the targeted definitions in Step 2.
 
 ```{r fig2, fig.cap = "**Figure 2.** Variance in each primary-tumor PC explained by clinical and technical features (adjusted R², linear model; negative values shown as 0). Percent variance per PC is shown under each axis label. Era: plates before A213 vs. plate A213 and after.", out.width = "75%"}
 knitr::include_graphics(file.path(r1, "pc_clinical_heatmap.png"))
@@ -54,12 +61,12 @@ knitr::include_graphics(file.path(r1, "pc_clinical_heatmap.png"))
 
 ### 1.3 Processing batch
 
-Plate effects are mainly a step between two processing eras at plate A213, which is also where adjacent normals stop being sequenced **(Figure S2)**. This is consistent with large plate effects in TCGA RNA-seq [7].
+Plate effects are mainly a step between two processing eras at plate A213, which is also where adjacent normals stop being sequenced **(Figure S2)**. This is consistent with large plate effects in TCGA RNA-seq [5].
 
 The eras differ in more than processing **(Table 1)**:
 
 - **Normals:** 110 of 112 normals are in the earlier era **(Table S2)**.
-- **Histology:** the later era is much more often lobular (43% vs. 12%), consistent with TCGA's expanded lobular cohort [4].
+- **Histology:** the later era is much more often lobular (43% vs. 12%), consistent with TCGA's expanded lobular cohort [2].
 - **ERBB2 amplification:** the apparent drop (13.5% to 6.6%) disappears within ductal tumors, and copy number is missing for 39% of later tumors.
 - **Receptors:** ER, PR and HER2 IHC are balanced.
 
@@ -73,17 +80,166 @@ After accounting for biology, plate still explains `r pr("PC3", "Plate")` of PC3
 
 **Decision: no plate correction** **(Supplement S4)**. There are three reasons:
 
-1. Era is confounded with sample type and histology **(Table 1)**, so correction would remove real biology. Protecting the labels instead would overstate group differences [8].
+1. Era is confounded with sample type and histology **(Table 1)**, so correction would remove real biology. Protecting the labels instead would overstate group differences [6].
 2. Correction distorts plates holding few tumors **(Table S4)**.
 3. ER/PR/HER2 signal barely depends on plate **(Figure S3, Figure S4)**.
 
-Replicate-based correction (RUV-III with pseudo-replicates, PRPS) is the principled option for TCGA [7]. If technical replicates run across plates were available, plate correction would be reconsidered.
+Replicate-based correction (RUV-III with pseudo-replicates, PRPS) is the principled option for TCGA [5]. If technical replicates run across plates were available, plate correction would be reconsidered.
 
 **Downstream handling:**
 
 - **Steps 2 and 4:** uncorrected VST, with era and histology as sensitivity covariates. Step 2 builds the clinical label from the HER2 IHC score (0/1+/2+/3+) with FISH, allowing a HER2-low group.
 - **Step 3:** cluster uncorrected VST, then test clusters against plate and era within histology.
 - **Step 5:** compare tumor and normal within patients (all 112 normals have a matched tumor).
+
+## 2. Identifying HER2+ patients
+
+### 2.1 Clinical HER2 status
+
+TCGA records two IHC fields for HER2: a numeric IHC score (0–3+) and a reported IHC status (Negative/Equivocal/Positive). It also records a FISH result for some tumors. The sites made these calls under the ASCO/CAP criteria of the time (2007 or 2013) [7, 8]. Rules modelled on the current 2018 guideline [9] were applied to them:
+
+- **IHC 3+** is HER2+.
+- **IHC 2+** takes its status from FISH, and stays unresolved without it.
+- **IHC 0/1+** is HER2−. If FISH is positive, the tumor is unresolved, because under 2018 rules it is positive only in ISH group 1, which cannot be checked here.
+- **The reported status** is used only when there is no score. It may record the final HER2 call rather than the IHC reading, so a reported Positive with negative FISH is unresolved.
+- **Score vs. reported status:** when both exist, each is turned into a call. A reported Equivocal with negative FISH counts as negative. If the two calls are opposite, the tumor is a conflict and is excluded. Otherwise the score wins.
+
+HER2− tumors with a numeric score were split into HER2-0 and HER2-low (IHC 1+, or 2+ with negative FISH). HER2-low is the group that trastuzumab deruxtecan opened to HER2-directed therapy [10, 11, 12].
+
+Of 1,093 primary tumors, 170 are HER2+ and 759 are HER2− **(Table 2)**. Another 33 are unresolved, 14 are conflicts, and 117 have neither IHC nor FISH. Most HER2− tumors with a score are HER2-low (394 of 455). The rule behind each label is listed in **(Table S5)**, and every disagreement between sources, with its resolution, in **(Table S6)**.
+
+```{r tab2}
+read_csv(file.path(r20, "her2_labels.csv")) |>
+  mutate(`HER2 status` = factor(her2_status, c("Positive", "Negative", "Unresolved", "Conflict", "Missing")),
+         Subgroup = if_else(her2_status == "Negative", str_replace(her2_low, "Negative, no score", "No IHC score"), "")) |>
+  count(`HER2 status`, Subgroup, name = "Tumors") |>
+  knitr::kable(caption = "**Table 2.** Clinical HER2 status of 1,093 primary tumors, from 2018-style rules applied to the reported IHC score, IHC status and FISH. HER2− tumors with a numeric IHC score are split into HER2-0 and HER2-low. Conflict: IHC score and reported IHC status give opposite calls (excluded).")
+```
+
+ERBB2 mRNA rises step by step from IHC 0 to 3+ **(Figure 3)**. Most 3+ tumors are amplified (GISTIC 2) with high mRNA. IHC 2+/FISH+ tumors split into an amplified, high-mRNA group and a non-amplified, low-mRNA group.
+
+Overall, 61 of 151 HER2+ tumors with copy-number data are not amplified (23 have a low-level gain). Three groups account for most of them:
+
+- **IHC 2+/FISH+ (19 tumors, 12 with a low-level gain):** these are probably borderline FISH results. Under 2018 rules, those in ISH groups 2 and 4 would be negative.
+- **Reported status only (20 tumors):** a noisy label (Section 2.2).
+- **Site A8 (7 tumors):** 7 of the 14 IHC 3+ tumors from site A8 are not amplified, although all 14 are FISH+ (Section 2.3).
+
+Low tumor purity could hide amplification. Purity was estimated from RNA-seq as the ESTIMATE score: a stromal plus immune signal, where higher means lower purity, ranging from −4,141 to 4,105 in this cohort. Among HER2+ tumors with a numeric IHC score, amplified tumors have a median score of −6 (IQR −996 to 960) and non-amplified tumors −218 (IQR −819 to 387). The two distributions are similar (Wilcoxon rank-sum p = 0.32), so there is no evidence that low purity explains the gap.
+
+```{r fig3, fig.cap = "**Figure 3.** ERBB2 mRNA (VST) by HER2 IHC score, colored by ERBB2 copy number (GISTIC). IHC 2+ is split by FISH ('2+ unresolved': no informative FISH). The 1+ group includes 3 FISH+ tumors that are unresolved in Table 2. Conflict: IHC score and reported IHC status disagree (Table 2). Tumors without a numeric score (n = 473) are not shown; most (290) have a reported IHC status (Section 2.2). ERBB2 values below 10 are shown at 10 (n = 2).", out.width = "90%"}
+knitr::include_graphics(file.path(r20, "erbb2_by_ihc.png"))
+```
+
+### 2.2 Reported IHC status is a noisy label at some sites
+
+**Key finding:** where only a reported IHC status exists, it is a poor stand-in for the IHC score. Labels were compared without any model, using the AUC of each raw predictor (ERBB2 mRNA or GISTIC copy number) against the IHC label. With a numeric score, both predictors separate IHC 3+ from 0/1+ well: AUC 0.93 for mRNA and 0.90 for copy number. With only a reported status, both are barely better than chance (0.64 and 0.60) **(Figure 4, Table 3)**. The reported Negatives look like scored negatives. The noise is in the reported Positives, many of which have low mRNA and no amplification.
+
+The reported Positives are concentrated in two tissue source sites **(Table S7)**. Sites BH and E9 account for 23 of the 31 reported-only positives, and only 7 of those 23 are amplified. The exclusion below was chosen after seeing this table, so it is exploratory: without BH and E9, the reported status gives an mRNA AUC of 0.85 (95% CI 0.70–1.00), but only 8 positives remain **(Table 3)**.
+
+Reported-only tumors are slightly more often from the later processing era (20% vs. 12%) and lobular (21% vs. 15%). These differences are too small to explain the AUC gap. The likely cause is site practice: some sites appear to have recorded a final or older-criteria HER2 call in the IHC field. TCGA clinical data are known to vary in quality across sites [13], although that work did not examine HER2 fields.
+
+Step 1's lead tumor fits this pattern. TCGA-E9-A1NC-01, the ER− tumor on single-tumor plate A26B **(Supplement S4)**, comes from site E9. It is reported Positive with no score or FISH, and has an ERBB2 copy loss (GISTIC −1) with low mRNA. Its HER2+ label is probably wrong.
+
+**Consequence:** the main IHC target in Section 2.3 uses the numeric score only (3+ vs. 0/1+). The reported-status tumors are added back as a sensitivity analysis.
+
+```{r tab3}
+read_csv(file.path(r21, "label_noise_auc.csv")) |>
+  transmute(Sites = subset, `Label source` = label_source, Predictor = predictor, Tumors = n, `IHC positive` = n_pos,
+            `AUC (95% CI)` = paste0(f3(auc), " (", f3(lo), "–", f3(hi), ")")) |>
+  knitr::kable(caption = "**Table 3.** Raw ERBB2 mRNA and ERBB2 copy number (GISTIC) vs. IHC 3+ (positive) or 0/1+ (negative), by label source: numeric IHC score, or reported IHC status only. All sites, and excluding sites BH and E9 (chosen after inspection). AUC (no model) with DeLong 95% CI. All tumors with copy-number data, so counts differ slightly from Table 4, which also requires complete ER, PR, histology and purity.")
+```
+
+```{r fig4, fig.cap = "**Figure 4.** ERBB2 mRNA (VST) in IHC-positive (3+) and IHC-negative (0/1+) tumors, by label source, colored by ERBB2 copy number (GISTIC). Tumors with copy-number data only.", out.width = "80%"}
+knitr::include_graphics(file.path(r21, "label_noise.png"))
+```
+
+### 2.3 Is RNA or DNA more predictive of IHC?
+
+**Clinical variables first.** Each clinical variable was tested for association with the main IHC target (numeric score, 3+ vs. 0/1+). It was tested in a univariable logistic model, then added to a logistic model of ERBB2 mRNA and copy number. Each step used a likelihood-ratio test with BH adjustment **(Table S8)**. Five interaction models were tested the same way **(Table S9)**.
+
+- **Alone:** only PR survives adjustment (PR− tumors are more often HER2+).
+- **Race:** Asian patients are more often HER2+ than White patients (OR 3.2, Wald p = 0.007), but race as a whole does not survive adjustment (likelihood-ratio p = 0.03, BH-adjusted 0.07).
+- **Added to mRNA and copy number:** no clinical variable adds anything, and no interaction is significant.
+
+The clinical variables were therefore carried only into a supplementary molecular + clinical model **(Supplement S6)**.
+
+**Design.** ERBB2 mRNA (VST) was compared with ERBB2 copy number (GISTIC, five ordered levels) on the same tumors. FISH helps define the clinical label, so it was not used as a DNA predictor. Each predictor is a single ordered value, so the pre-specified primary test needs no model: the raw-value AUCs (as in Section 2.2) were compared with a paired DeLong test **(Table 4)**.
+
+Logistic regression was then used to model and combine predictors. The models below were fitted to all 366 tumors of the main target:
+
+$$\textbf{RNA:}\quad \operatorname{logit} P(\text{IHC 3+}) = \beta_0 + \beta_1\,\text{ERBB2}$$
+
+$$\textbf{DNA:}\quad \operatorname{logit} P(\text{IHC 3+}) = \beta_0 + \gamma_0\,[\text{CN}=0] + \gamma_1\,[\text{CN}=1] + \gamma_2\,[\text{CN}=2]$$
+
+$$\textbf{RNA + DNA:}\quad \operatorname{logit} P(\text{IHC 3+}) = \beta_0 + \beta_1\,\text{ERBB2} + \gamma_0\,[\text{CN}=0] + \gamma_1\,[\text{CN}=1] + \gamma_2\,[\text{CN}=2]$$
+
+In these equations:
+
+- **ERBB2** is mRNA in VST units (about log2), with coefficient $\beta_1$.
+- **CN** is GISTIC copy number, entered as indicators $[\text{CN}=c]$ (1 if the tumor has level $c$) with coefficients $\gamma_c$. Loss (−1/−2) is the reference.
+- **$\beta_0$** is the intercept.
+
+Fitted values are in **(Table S10)**:
+
+- **RNA model:** $\beta_1$ = `r sprintf("%.2f", b("RNA", "ERBB2"))`, so each VST unit multiplies the odds of IHC 3+ by `r sprintf("%.1f", exp(b("RNA", "ERBB2")))`.
+- **DNA model:** the amplification term is $\gamma_2$ = `r sprintf("%.2f", b("DNA", "GISTIC2"))`.
+- **RNA + DNA model:** once mRNA is included, $\gamma_2$ shrinks to `r sprintf("%.2f", b("RNA + DNA", "GISTIC2"))` and its 95% CI includes 0, while $\beta_1$ stays at `r sprintf("%.2f", b("RNA + DNA", "ERBB2"))`.
+
+Model performance was estimated by stratified cross-validation (CV): 5 folds × 10 repeats for exploration, and 10 folds × 10 repeats for the selected model. AUC was computed within each test fold and then averaged. Models were compared with the corrected repeated k-fold t-test, BH-adjusted across all comparisons **(Supplement S7)**.
+
+**Result: RNA is modestly more predictive than DNA for IHC 3+, and clearly better for HER2-low** **(Table 4)**.
+
+- **Main target (366 tumors, 76 IHC 3+):**
+  - **Primary test:** the raw AUC is 0.927 for mRNA vs. 0.893 for copy number (difference 0.033, 95% CI 0.001–0.066, paired DeLong p = 0.045).
+  - **CV:** the logistic models agree in direction (5-fold: 0.927 vs. 0.889, corrected t-test p = 0.03, BH-adjusted 0.18; final 10-fold: 0.927 vs. 0.890, p = 0.05) **(Figure 5)**.
+  - The evidence is modest.
+- **Other HER2 targets:**
+  - **Reported status included:** RNA leads but not significantly (raw p = 0.06).
+  - **FISH-resolved clinical status:** RNA leads on raw values (p = 0.04), but CV shows no difference (+0.009, corrected t-test p = 0.67, BH-adjusted 0.93).
+- **By processing era:** RNA leads in both eras, but neither difference is significant on its own (the later era has only 8 positives).
+- **HER2-low:** RNA is clearly better.
+  - **HER2-low vs. HER2-0:** 0.685 vs. 0.573, p = 0.001. This group mixes IHC 1+ with 2+/FISH− tumors, which have higher mRNA (Figure 3).
+  - **IHC 1+ vs. 0 (the harder clinical split):** RNA still leads (0.652 vs. 0.554, p = 0.008; CV BH-adjusted p = 0.03).
+  - **Model:** the RNA logistic model with HER2-low as the outcome gives $\beta_1$ = `r sprintf("%.2f", b("HER2-low: RNA", "ERBB2"))` (Table S10).
+  - **Not just ER biology:** HER2-low is enriched in HR+ disease [14], so RNA could be riding on ER biology. It still leads within ER+ tumors (0.655 vs. 0.559, p = 0.04) and in CV models that include ER (+0.13, BH-adjusted p = 0.03).
+  - **Ceiling:** pathologists agree poorly on IHC 0 vs. 1+ [15], which caps any predictor of this split.
+  - **Ultralow:** TCGA "IHC 0" probably includes HER2-ultralow tumors (faint staining below 1+). These are now also eligible for trastuzumab deruxtecan in HR+ disease [11], so for HR+ tumors the treatment decision now lies below IHC 0 vs. 1+.
+
+**Combining does not help** **(Table S11, Table S12, Figure S5)**. In CV logistic models, each step below leaves the AUC not significantly changed (all BH-adjusted p ≥ 0.22):
+
+- **Copy number** added to mRNA (the RNA + DNA model).
+- **ER and PR** added to RNA + DNA (the molecular model).
+- **The 17q12 co-amplified genes** GRB7, STARD3 and PGAP3 added to the molecular model.
+  - These genes sit in the same amplicon as ERBB2 and track it closely, so they add little independent information.
+  - The only trend is with the noisy reported-status target (+0.027, corrected t-test p = 0.06, BH-adjusted 0.22).
+- **Tumor purity** (ESTIMATE, with interaction) added to mRNA or to copy number.
+- **Era and histology** added to mRNA or to copy number.
+
+The selected model is ERBB2 mRNA alone (the RNA equation above), with a 10-fold CV AUC of 0.927.
+
+**Caveats.**
+
+- **The label matters.** The main label is IHC, a protein readout, which an mRNA measure tracks more directly than copy number. The FISH-resolved clinical status partly favors copy number instead, and there DNA does not beat RNA either. FISH itself could not be a predictor without leaking the label.
+- **The scales differ.** mRNA is continuous, while GISTIC has five levels.
+- **mRNA is not a validated substitute.** A commercial ERBB2 mRNA assay (Oncotype DX) missed some IHC/FISH-positive tumors [16], so mRNA alone is not a validated substitute for IHC/FISH.
+
+```{r tab4}
+read_csv(file.path(r21, "rna_vs_dna_raw.csv")) |>
+  transmute(Target = target, Subset = subset, Tumors = n, Positive = n_pos, `AUC RNA` = f3(auc_rna), `AUC DNA` = f3(auc_dna),
+            `Difference (95% CI)` = paste0(f3(diff), " (", f3(lo), " to ", f3(hi), ")"), p = fp(p)) |>
+  knitr::kable(caption = "**Table 4.** Primary RNA vs. DNA test: raw-value AUC of ERBB2 mRNA (RNA) and ERBB2 copy number (DNA, GISTIC) for each HER2 target, compared by paired DeLong test (no model fitted). Positive: IHC 3+, HER2+, HER2-low or IHC 1+, by target. Complete cases for ER, PR, histology and purity.")
+```
+
+```{r fig5, fig.cap = "**Figure 5.** ROC curves for predicting IHC 3+ vs. 0/1+ (numeric score; n = 366) from the RNA, DNA and RNA + DNA logistic models (equations in Section 2.3). Stratified 10-fold CV; curves show pooled out-of-fold predictions from the first of 10 repeats. Legend: mean AUC over test folds and repeats.", out.width = "55%"}
+knitr::include_graphics(file.path(r21, "roc_final.png"))
+```
+
+**Tumors where the model and IHC disagree.** Using out-of-fold predictions from the molecular logistic model (ERBB2 mRNA + GISTIC + ER + PR), 18 scored tumors disagree strongly with IHC **(Table S13)**:
+
+- **Two IHC-negative tumors are amplified with very high mRNA:** TCGA-A2-A0YJ-01 (IHC 0) and TCGA-A8-A08J-01 (IHC 1+, FISH−). They are candidates for HER2 re-testing. Across the cohort, 12 HER2− tumors are amplified.
+- **Sixteen IHC 3+ tumors have neither amplification nor high mRNA.**
+  - **Site A8:** six are from site A8, all FISH+, with GISTIC loss, no change or a low-level gain. Across site A8, 7 of 14 IHC 3+/FISH+ tumors look like this. FISH amplification without a copy-number or mRNA signal is hard to explain biologically, and together with A8-A08J this points to site-level annotation problems.
+  - **Lobular:** four are lobular tumors from the later era. Two of them, plus A2-A0EQ, are FISH−, which points to IHC over-scoring. ERBB2 activating mutations occur in about 5% of lobular cancers [17]. They switch on HER2 signalling without overexpression, so they matter for HER2-directed therapy but are unlikely to produce IHC 3+ (mutation data are not available here).
 
 # Supplement
 
@@ -125,7 +281,7 @@ pbio |> mutate(across(-c(PC, n), \(x) round(x, 3))) |>
 
 ## S4. Plate correction test (not applied)
 
-Plate was removed from primary-tumor VST with `limma::removeBatchEffect` [2] in three ways:
+Plate was removed from primary-tumor VST with `limma::removeBatchEffect` in three ways:
 
 - **All 41 plates.**
 - **Pooled plates:** each plate with <10 tumors was merged into the nearest large plate by processing order.
@@ -135,7 +291,7 @@ Plate association after correction is ~0 by construction, so it is not shown. Th
 
 - **ER and PR** associations with PC1 change little **(Figure S3)**.
 - **HER2 IHC on PC3** rises slightly (0.13 to 0.14, or 0.16 when protected), so plate partly masked HER2 signal rather than creating it.
-- **Marker genes** keep their association with clinical labels, and protecting the labels inflates them, as expected [8] **(Figure S4)**.
+- **Marker genes** keep their association with clinical labels, and protecting the labels inflates them, as expected [6] **(Figure S4)**.
 
 ```{r figS3, fig.cap = "**Figure S3.** Adjusted R² of primary-tumor PC1–5 with ER, PR and HER2 IHC, before and after each plate correction.", out.width = "95%"}
 knitr::include_graphics(file.path(r11, "pc_assoc_by_version.png"))
@@ -156,16 +312,134 @@ read_csv(file.path(r11, "small_plate_samples.csv")) |>
   knitr::kable(caption = "**Table S4.** Tumors on plates with <10 tumors: ERBB2 and ESR1 (VST) uncorrected (raw), after 41-plate correction, and after pooled-plate correction.")
 ```
 
+## S5. HER2 labels, disagreements and label sources
+
+```{r tabS5}
+read_csv(file.path(r20, "label_rules.csv")) |>
+  rename(`HER2 status` = her2_status, Rule = rule, Tumors = n) |>
+  knitr::kable(caption = "**Table S5.** Rule that set each tumor's HER2 status. 'IHC score' uses the numeric HER2 IHC score; 'Reported IHC' uses the reported IHC status when no score exists; FISH is shown when it informs the call.")
+```
+
+```{r tabS6}
+read_csv(file.path(r20, "disagreements_summary.csv")) |>
+  rename(Disagreement = type) |>
+  knitr::kable(caption = "**Table S6.** Disagreements between HER2 sources, with the status each tumor received (columns). IHC score vs. reported IHC status lists only pairs that give different calls. The bottom rows compare final status with ERBB2 amplification (GISTIC), by label source.")
+```
+
+```{r tabS7}
+read_csv(file.path(r21, "label_source_by_site.csv")) |>
+  filter(reported_only_pos > 0) |>
+  rename(Site = TSS, `Scored tumors` = scored, `Reported-only tumors` = reported_only,
+         `Reported-only positive` = reported_only_pos, `… of which amplified` = reported_only_pos_amplified) |>
+  knitr::kable(caption = "**Table S7.** Tissue source sites with reported-only IHC-positive tumors: tumors with a numeric IHC score, tumors with only a reported IHC status, and reported-only positives (and how many are ERBB2-amplified). Tumors with copy-number data and an IHC 3+ vs. 0/1+ label only.")
+```
+
+## S6. Clinical variables and HER2 status
+
+Each clinical variable was tested against the main IHC target (numeric score, 3+ vs. 0/1+) with logistic models. It was tested alone, then added to the RNA + DNA model (Section 2.3). Each test was a likelihood-ratio test, with BH adjustment within each set **(Table S8)**. Five interaction models (two variables plus their product) were tested the same way, for the interaction term **(Table S9)**.
+
+- **Sex:** only 6 males (2 HER2+), too few to assess.
+- **Race:** White is the reference. One American Indian patient was excluded as too rare, and race is missing for 65 tumors.
+- **Histology:** lobular vs. all other types.
+
+A molecular + clinical model (ERBB2 mRNA + GISTIC + ER + PR + age + race) was fitted on the 303 tumors with complete data. Its CV AUC matches the molecular model on the same tumors **(Table S11, Table S12)**.
+
+```{r tabS8}
+or <- read_csv(file.path(r21, "clinical_or.csv")) |>
+  mutate(lab = paste0(str_remove(term, variable) |> str_to_sentence(), " ", sprintf("%.2f", OR), " (", sprintf("%.2f", lo), "–", sprintf("%.2f", hi), ")")) |>
+  group_by(variable) |> summarise(`OR (95% CI)` = paste(lab, collapse = "; "))
+read_csv(file.path(r21, "clinical_assoc.csv")) |> left_join(or, by = "variable") |>
+  transmute(Variable = recode(variable, Age10 = "Age (per 10 y)"), Tumors = n, `HER2+` = n_pos, `OR (95% CI)`,
+            `p alone (adj.)` = fp(padj_alone), `p added to RNA + DNA (adj.)` = fp(padj_beyond_molecular)) |>
+  knitr::kable(caption = "**Table S8.** Clinical variables vs. HER2 IHC status (numeric score, 3+ vs. 0/1+). Odds ratios from univariable logistic regression (reference: female, White, ER−, PR−, non-lobular, later era). p values from likelihood-ratio tests, alone and added to ERBB2 mRNA + copy number, BH-adjusted. Tumors: sample for the 'alone' test; the added-to-model test uses only tumors with copy-number data (368; fewer for race, ER and PR).")
+```
+
+```{r tabS9}
+read_csv(file.path(r21, "clinical_interactions.csv")) |>
+  transmute(Interaction = interaction, Tumors = n, p = fp(p_interaction), `p (adj.)` = fp(padj)) |>
+  knitr::kable(caption = "**Table S9.** Interaction models for HER2 IHC status: likelihood-ratio test of the interaction term against main effects only, BH-adjusted.")
+```
+
+## S7. Logistic models and cross-validation
+
+**Models.** All models are logistic regressions that extend the RNA, DNA and RNA + DNA models of Section 2.3. Two models are specific enough to write out. The molecular model, which also produces the discordance calls in Table S13, is
+
+$$\textbf{Molecular:}\quad \operatorname{logit} P = \beta_0 + \beta_1\,\text{ERBB2} + \textstyle\sum_{c} \gamma_c\,[\text{CN}=c] + \beta_{\text{ER}}\,\text{ER} + \beta_{\text{PR}}\,\text{PR}$$
+
+with ER and PR coded positive = 1. Its fitted values are in Table S10. The purity models add a main effect and an interaction:
+
+$$\textbf{RNA} \times \textbf{purity:}\quad \operatorname{logit} P = \beta_0 + \beta_1\,\text{ERBB2} + \delta\,\text{Purity} + \theta\,\text{ERBB2} \times \text{Purity}$$
+
+Purity is the ESTIMATE score divided by 1,000. The DNA × purity model is the same, with the copy-number indicators in place of ERBB2. The other models add covariates as main effects:
+
+- **17q12:** GRB7, STARD3 and PGAP3 mRNA, added to the molecular model.
+- **Era and histology.**
+- **Age and race.**
+
+GISTIC −2 (n = 1) is merged into the −1 reference.
+
+Coefficients fitted on the full data are in **(Table S10)**.
+
+**Cross-validation.** Stratified k-fold CV over 10 repeats (5 folds for exploration, 10 for the selected model). Every model in an analysis uses the same tumors and folds.
+
+- **AUC:** computed within each test fold and then averaged. Pooling out-of-fold predictions across folds biases AUC downward, most for the discrete GISTIC predictor.
+- **Comparisons:** paired comparisons and confidence intervals use the corrected repeated k-fold t-test, which accounts for overlapping training sets. p values are BH-adjusted across the 22 exploration comparisons. The final 10-fold run repeats main-target tests, so its p values are left unadjusted.
+
+All results are shown in **(Figure S5)**.
+
+```{r tabS10}
+cf |> transmute(Model = model, Term = term, `β (95% CI)` = paste0(sprintf("%.2f", beta), " (", sprintf("%.2f", lo), " to ", sprintf("%.2f", hi), ")"),
+                p = fp(p), Tumors = n) |>
+  knitr::kable(caption = "**Table S10.** Logistic regression coefficients (log-odds) fitted on all tumors of the main target (IHC score 3+ vs. 0/1+) or HER2-low vs. HER2-0. ERBB2: mRNA (VST); GISTIC c: indicator for copy-number level c (reference −1/−2); ER/PR: positive vs. negative. Wald p values.")
+```
+
+```{r figS5, fig.cap = "**Figure S5.** Cross-validated AUC (mean over test folds and repeats, with corrected 95% CI) for every logistic model and target. Molecular: ERBB2 mRNA + GISTIC + ER + PR; 17q12: GRB7, STARD3, PGAP3 mRNA; purity: ESTIMATE score (with interaction).", out.width = "85%"}
+knitr::include_graphics(file.path(r21, "cv_auc_all.png"))
+```
+
+```{r tabS11}
+read_csv(file.path(r21, "cv_auc.csv")) |>
+  transmute(Analysis = analysis, Model = model, Tumors = n, Positive = n_pos, Folds = k,
+            `CV AUC (95% CI)` = paste0(f3(est), " (", f3(lo), "–", f3(hi), ")")) |>
+  knitr::kable(caption = "**Table S11.** Cross-validated AUC of each logistic model (mean over test folds and repeats; corrected 95% CI) (Figure S5).")
+```
+
+```{r tabS12}
+read_csv(file.path(r21, "cv_compare.csv")) |>
+  transmute(Analysis = analysis, Comparison = comparison,
+            `AUC difference (95% CI)` = paste0(f3(est), " (", f3(lo), " to ", f3(hi), ")"), p = fp(p), `p (BH)` = fp(padj)) |>
+  knitr::kable(caption = "**Table S12.** Paired model comparisons (first model minus second): mean AUC difference over test folds and repeats, with corrected repeated k-fold t-test CI and p, BH-adjusted across all comparisons.")
+```
+
+## S8. Tumors where the molecular model disagrees with IHC
+
+```{r tabS13}
+read_csv(file.path(r21, "discordant_tumors.csv")) |>
+  transmute(Sample = sample_id, Site = TSS, `IHC score` = paste0(score, if_else(score > 0, "+", "")), `Reported IHC` = category,
+            FISH = fish, `ERBB2 mRNA` = round(ERBB2, 1), GISTIC = gistic, ER, PR, Histology, Era,
+            ESTIMATE = round(estimate_score), `P(HER2+)` = signif(p_molecular, 2)) |>
+  knitr::kable(caption = "**Table S13.** Scored tumors where the molecular logistic model (ERBB2 mRNA + GISTIC + ER + PR) strongly disagrees with IHC: IHC 3+ with predicted probability <0.2, or IHC 0/1+ with >0.8. Probability: out-of-fold prediction (5-fold CV) averaged over 10 repeats. ESTIMATE: higher = lower purity.")
+```
+
 # References
 
-1. Love MI, Huber W, Anders S. Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2. *Genome Biol* 2014;15:550. PMID 25516281. DOI: [10.1186/s13059-014-0550-8](https://doi.org/10.1186/s13059-014-0550-8).
-2. Ritchie ME, et al. limma powers differential expression analyses for RNA-sequencing and microarray studies. *Nucleic Acids Res* 2015;43:e47. PMID 25605792. DOI: [10.1093/nar/gkv007](https://doi.org/10.1093/nar/gkv007).
-3. Cancer Genome Atlas Network. Comprehensive molecular portraits of human breast tumours. *Nature* 2012;490:61–70. PMID 23000897. DOI: [10.1038/nature11412](https://doi.org/10.1038/nature11412).
-4. Ciriello G, et al. Comprehensive molecular portraits of invasive lobular breast cancer. *Cell* 2015;163:506–519. PMID 26451490. DOI: [10.1016/j.cell.2015.09.033](https://doi.org/10.1016/j.cell.2015.09.033).
-5. Aran D, Sirota M, Butte AJ. Systematic pan-cancer analysis of tumour purity. *Nat Commun* 2015;6:8971. PMID 26634437. DOI: [10.1038/ncomms9971](https://doi.org/10.1038/ncomms9971).
-6. Prat A, Perou CM. Deconstructing the molecular portraits of breast cancer. *Mol Oncol* 2011;5:5–23. PMID 21147047. DOI: [10.1016/j.molonc.2010.11.003](https://doi.org/10.1016/j.molonc.2010.11.003).
-7. Molania R, et al. Removing unwanted variation from large-scale RNA sequencing data with PRPS. *Nat Biotechnol* 2023;41:82–95. PMID 36109686. DOI: [10.1038/s41587-022-01440-w](https://doi.org/10.1038/s41587-022-01440-w).
-8. Nygaard V, Rødland EA, Hovig E. Methods that remove batch effects while retaining group differences may lead to exaggerated confidence in downstream analyses. *Biostatistics* 2016;17:29–39. PMID 26272994. DOI: [10.1093/biostatistics/kxv027](https://doi.org/10.1093/biostatistics/kxv027).
+1. Cancer Genome Atlas Network. Comprehensive molecular portraits of human breast tumours. *Nature* 2012;490:61–70. PMID 23000897. DOI: [10.1038/nature11412](https://doi.org/10.1038/nature11412).
+2. Ciriello G, et al. Comprehensive molecular portraits of invasive lobular breast cancer. *Cell* 2015;163:506–519. PMID 26451490. DOI: [10.1016/j.cell.2015.09.033](https://doi.org/10.1016/j.cell.2015.09.033).
+3. Aran D, Sirota M, Butte AJ. Systematic pan-cancer analysis of tumour purity. *Nat Commun* 2015;6:8971. PMID 26634437. DOI: [10.1038/ncomms9971](https://doi.org/10.1038/ncomms9971).
+4. Prat A, Perou CM. Deconstructing the molecular portraits of breast cancer. *Mol Oncol* 2011;5:5–23. PMID 21147047. DOI: [10.1016/j.molonc.2010.11.003](https://doi.org/10.1016/j.molonc.2010.11.003).
+5. Molania R, et al. Removing unwanted variation from large-scale RNA sequencing data with PRPS. *Nat Biotechnol* 2023;41:82–95. PMID 36109686. DOI: [10.1038/s41587-022-01440-w](https://doi.org/10.1038/s41587-022-01440-w).
+6. Nygaard V, Rødland EA, Hovig E. Methods that remove batch effects while retaining group differences may lead to exaggerated confidence in downstream analyses. *Biostatistics* 2016;17:29–39. PMID 26272994. DOI: [10.1093/biostatistics/kxv027](https://doi.org/10.1093/biostatistics/kxv027).
+7. Wolff AC, et al. American Society of Clinical Oncology/College of American Pathologists guideline recommendations for human epidermal growth factor receptor 2 testing in breast cancer. *J Clin Oncol* 2007;25:118–145. PMID 17159189. DOI: [10.1200/JCO.2006.09.2775](https://doi.org/10.1200/JCO.2006.09.2775).
+8. Wolff AC, et al. Recommendations for human epidermal growth factor receptor 2 testing in breast cancer: American Society of Clinical Oncology/College of American Pathologists clinical practice guideline update. *J Clin Oncol* 2013;31:3997–4013. PMID 24101045. DOI: [10.1200/JCO.2013.50.9984](https://doi.org/10.1200/JCO.2013.50.9984).
+9. Wolff AC, et al. Human epidermal growth factor receptor 2 testing in breast cancer: American Society of Clinical Oncology/College of American Pathologists clinical practice guideline focused update. *J Clin Oncol* 2018;36:2105–2122. PMID 29846122. DOI: [10.1200/JCO.2018.77.8738](https://doi.org/10.1200/JCO.2018.77.8738).
+10. Modi S, et al. Trastuzumab deruxtecan in previously treated HER2-low advanced breast cancer. *N Engl J Med* 2022;387:9–20. PMID 35665782. DOI: [10.1056/NEJMoa2203690](https://doi.org/10.1056/NEJMoa2203690).
+11. Bardia A, et al. Trastuzumab deruxtecan after endocrine therapy in metastatic breast cancer. *N Engl J Med* 2024;391:2110–2122. PMID 39282896. DOI: [10.1056/NEJMoa2407086](https://doi.org/10.1056/NEJMoa2407086).
+12. Tarantino P, et al. ESMO expert consensus statements (ECS) on the definition, diagnosis, and management of HER2-low breast cancer. *Ann Oncol* 2023;34:645–659. PMID 37269905. DOI: [10.1016/j.annonc.2023.05.008](https://doi.org/10.1016/j.annonc.2023.05.008).
+13. Liu J, et al. An integrated TCGA pan-cancer clinical data resource to drive high-quality survival outcome analytics. *Cell* 2018;173:400–416. PMID 29625055. DOI: [10.1016/j.cell.2018.02.052](https://doi.org/10.1016/j.cell.2018.02.052).
+14. Schettini F, et al. Clinical, pathological, and PAM50 gene expression features of HER2-low breast cancer. *NPJ Breast Cancer* 2021;7:1. PMID 33397968. DOI: [10.1038/s41523-020-00208-2](https://doi.org/10.1038/s41523-020-00208-2).
+15. Fernandez AI, et al. Examination of low ERBB2 protein expression in breast cancer tissue. *JAMA Oncol* 2022;8:607–610. PMID 35113160. DOI: [10.1001/jamaoncol.2021.7239](https://doi.org/10.1001/jamaoncol.2021.7239).
+16. Dabbs DJ, et al. High false-negative rate of HER2 quantitative reverse transcription polymerase chain reaction of the Oncotype DX test: an independent quality assurance study. *J Clin Oncol* 2011;29:4279–4285. PMID 21990395. DOI: [10.1200/JCO.2011.34.7963](https://doi.org/10.1200/JCO.2011.34.7963).
+17. Desmedt C, et al. Genomic characterization of primary invasive lobular breast cancer. *J Clin Oncol* 2016;34:1872–1881. PMID 26926684. DOI: [10.1200/JCO.2015.64.0334](https://doi.org/10.1200/JCO.2015.64.0334).
 
 ```{=html}
 <!-- Cross-references: in-text (Figure/Table X) citations link to the item; captions link back to each citation -->
@@ -174,9 +448,25 @@ read_csv(file.path(r11, "small_plate_samples.csv")) |>
   a.xref:target { background: #fff3cd; }
   .backrefs { font-size: 0.85em; margin-left: 0.4em; }
   .backrefs a { margin-left: 0.3em; text-decoration: none; }
+  /* Contents panel toggle */
+  #toc-toggle { position: fixed; top: 8px; left: 8px; z-index: 1000; padding: 3px 9px; font-size: 13px;
+                border: 1px solid #ccc; border-radius: 4px; background: #fff; cursor: pointer; }
+  #toc-toggle:hover { background: #f3f3f3; }
+  body.toc-hidden #TOC { display: none; }
+  body.toc-hidden .toc-content { width: 100%; }
 </style>
+<button id="toc-toggle" type="button" title="Show or hide the contents panel">Hide contents</button>
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+  // Contents panel toggle (choice remembered in this browser when storage is available)
+  const btn = document.getElementById("toc-toggle");
+  const tocCol = document.getElementById("TOC")?.parentElement;
+  const setToc = hidden => { document.body.classList.toggle("toc-hidden", hidden); if (tocCol) tocCol.style.display = hidden ? "none" : ""; btn.textContent = hidden ? "Show contents" : "Hide contents"; };
+  try { setToc(localStorage.getItem("tocHidden") === "1"); } catch (e) { setToc(false); }
+  btn.addEventListener("click", () => {
+    const hidden = !document.body.classList.contains("toc-hidden"); setToc(hidden);
+    try { localStorage.setItem("tocHidden", hidden ? "1" : "0"); } catch (e) {}
+  });
   const key = s => s.trim().replace(/\s+/g, "-").toLowerCase();   // "Figure S1" -> "figure-s1"
   const back = {};
   // Anchor each figure/table caption

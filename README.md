@@ -20,7 +20,8 @@ Run from repo root (`Rscript analyses/<script>.R`); outputs go to `results/<scri
 |---|---|---|
 | 1 | `analyses/01.0_qc_vst_pca.R` | QC, DESeq2 VST, PCA, PC1–5 vs. clinical/technical features |
 | 1 | `analyses/01.1_plate_correction.R` | Plate/era assessment: composition, era balance, correction test (not applied) |
-| 2 | `analyses/02.0_her2_labels.R` | Clinical HER2 status (ASCO/CAP 2018), HER2-low categories, IHC-only target, label disagreements |
+| 2 | `analyses/02.0_her2_labels.R` | HER2 labels (2018-style rules on reported IHC/FISH), HER2-low, disagreements; per-tumor features incl. ESTIMATE purity score and site |
+| 2 | `analyses/02.1_rna_vs_dna.R` | Clinical exploration, label-noise check by site, RNA vs DNA (raw paired AUC), purity, CV logistic models, discordant tumors |
 
 ## Key notes for later steps (from Step 1)
 
@@ -42,19 +43,16 @@ Run from repo root (`Rscript analyses/<script>.R`); outputs go to `results/<scri
 - **No leakage:** FISH status, `HER2 cent17 ratio`, `HER2 copy number` help define the clinical label, so they are not DNA predictors of it.
 - Fair comparison: same complete-case samples (CN missingness is era-dependent), cross-validated AUC, paired test (bootstrap/DeLong). Note that continuous mRNA has an advantage over 5-level GISTIC.
 - IHC-equivocal: exclude from binary target or resolve by FISH. FISH covers 416 tumors, only 39% IHC-equivocal.
-- **HER2-low** (ADC-relevant): `HER2 ihc score` 0 / 1+ / 2+ / 3+ = 61 / 273 / 200 / 90 (484 missing). Label conflicts exist (11 tumors scored 1+ but labelled Positive, 2 scored 3+ but labelled Negative). 246 "Negative" tumors have no score. Build an explicit label table with rules and report exclusions.
+- **HER2-low** (ADC-relevant): `HER2 ihc score` 0 / 1+ / 2+ / 3+ = 61 / 273 / 200 / 90 (484 missing) across all 1,108 clinical rows; among the 1,093 primary tumors with RNA: 61 / 270 / 199 / 90 (473 missing). Label conflicts exist (11 tumors scored 1+ but labelled Positive, 2 scored 3+ but labelled Negative). 246 "Negative" tumors have no score. Build an explicit label table with rules and report exclusions.
 - Sensitivity covariates: era **plus histology** (era alone absorbs lobular biology); also report performance by era. Include era/purity for the CN model too.
 - Lead: tumor TCGA-E9-A1NC-01 is HER2 IHC+ but ERBB2 mRNA low (RNA/IHC discordance).
 
-**Report notes for 02.0 figure (`erbb2_by_ihc.png`) legend**
-- Tumors without a numeric IHC score (n = 473) are not shown; most (290) still have a reported IHC status (`IHC-HER2`: 242 Negative, 41 Positive, 7 Equivocal), which is used in the labels and later steps.
-- ERBB2 VST values below 10 are displayed at 10 (n = 2 plotted).
-
-**PI decisions for 02.1**
-- Equivocal: two steps. Main = IHC-only target (3+ vs 0/1+, equivocal excluded); sensitivity = FISH-resolved clinical status.
-- Exploratory first: test clinical metadata (race, age, sex, plus ER/PR, histology, era) for association with HER2 status, including separate interaction models. Include only variables that help.
-- Models: ERBB2 mRNA; GISTIC CN; both; multimodal molecular (+ ER, PR status; with vs without 17q12 amplicon genes GRB7/STARD3/PGAP3); and molecular + clinical if exploration supports it.
-- CV: k = 3 folds while exploring; k = 10 for the final selected model.
+**Step 2 decisions and findings (for later steps)**
+- Labels: `results/02.0_her2_labels/her2_labels.csv` (one row per primary tumor; `her2_status`, `her2_low`, `label_source`, `TSS`, `estimate_score`). TCGA IHC/FISH calls follow 2007/2013 criteria; 2018-style rules applied. IHC 0/1+ with FISH+ and reported Positive with FISH- are Unresolved.
+- Reported IHC status (no numeric score) is noisy at sites BH and E9; use the **numeric IHC score** for IHC targets. Site A8 has IHC 3+/FISH+ tumors without amplification or high mRNA (annotation issue).
+- RNA modestly beats DNA for IHC 3+ (AUC 0.927 vs 0.893, p = 0.045) and clearly for HER2-low vs HER2-0 (0.685 vs 0.573) and IHC 1+ vs 0 (0.652 vs 0.554). Selected model: ERBB2 mRNA alone. Clinical variables, ER/PR, 17q12 genes and purity add nothing.
+- CV method: AUC per test fold then averaged (pooling biases discrete predictors); corrected repeated k-fold t-test for comparisons; GISTIC categorical in models. 5-fold x 10 repeats exploring, 10-fold x 10 repeats final.
+- References: key findings/insights only, no software or routine methods (see CLAUDE.md).
 
 **Plan for Steps 3–5**
 - Step 3: PAM on uncorrected VST (refilter genes on tumors). Test clusters vs plate/era **within histology** (e.g. CMH or ductal-only). Check stability.

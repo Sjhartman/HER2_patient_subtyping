@@ -1,6 +1,11 @@
-her2_status,GISTIC -1,GISTIC 0,GISTIC 1,GISTIC 2,GISTIC NA,GISTIC -2
-Conflict,5,11,5,2,3,0
-Missing,21,51,19,10,16,0
-Negative,191,327,133,11,91,0
-Positive,18,22,25,91,19,1
-Unresolved,1,6,5,5,4,0
+her2_status,label_source,GISTIC -1,GISTIC 0,GISTIC 1,GISTIC NA,GISTIC 2,GISTIC -2
+Conflict,Numeric IHC score,4,5,2,3,0,0
+Missing,None,21,51,19,16,10,0
+Negative,FISH only,14,28,6,8,1,0
+Negative,Numeric IHC score,102,203,91,48,11,0
+Negative,Reported IHC status only,76,100,36,35,0,0
+Positive,FISH only,0,1,3,0,5,0
+Positive,Numeric IHC score,6,12,19,12,74,0
+Positive,Reported IHC status only,10,8,1,7,11,1
+Unresolved,Numeric IHC score,2,8,8,3,7,0
+Unresolved,Reported IHC status only,1,1,2,1,0,0
