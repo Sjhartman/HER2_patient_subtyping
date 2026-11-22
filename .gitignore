@@ -1,0 +1,7 @@
+*.csv
+!results/**/*.csv
+data_dir/
+.DS_Store
+.Rhistory
+.RData
+.Rproj.user/
