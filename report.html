@@ -2007,89 +2007,24 @@ includes 0, while <span class="math inline">\(\beta_1\)</span> stays at
 selected model. AUC was computed within each test fold and then
 averaged. Models were compared with the corrected repeated k-fold
 t-test, BH-adjusted across all comparisons <strong>(Supplement
-S7)</strong>.</p>
+S8)</strong>.</p>
 <p><strong>Result: RNA is modestly more predictive than DNA for IHC 3+,
-and clearly better for HER2-low</strong> <strong>(Table 4)</strong>.</p>
-<ul>
-<li><strong>Main target (366 tumors, 76 IHC 3+):</strong>
-<ul>
-<li><strong>Primary test:</strong> the raw AUC is 0.927 for mRNA
-vs. 0.893 for copy number (difference 0.033, 95% CI 0.001–0.066, paired
-DeLong p = 0.045).</li>
-<li><strong>CV:</strong> the logistic models agree in direction (5-fold:
-0.927 vs. 0.889, corrected t-test p = 0.03, BH-adjusted 0.18; final
-10-fold: 0.927 vs. 0.890, p = 0.05) <strong>(Figure 5)</strong>.</li>
-<li>The evidence is modest.</li>
-</ul></li>
-<li><strong>Other HER2 targets:</strong>
-<ul>
-<li><strong>Reported status included:</strong> RNA leads but not
-significantly (raw p = 0.06).</li>
-<li><strong>FISH-resolved clinical status:</strong> RNA leads on raw
-values (p = 0.04), but CV shows no difference (+0.009, corrected t-test
-p = 0.67, BH-adjusted 0.93).</li>
-</ul></li>
-<li><strong>By processing era:</strong> RNA leads in both eras, but
-neither difference is significant on its own (the later era has only 8
-positives).</li>
-<li><strong>HER2-low:</strong> RNA is clearly better.
-<ul>
-<li><strong>HER2-low vs. HER2-0:</strong> 0.685 vs. 0.573, p = 0.001.
-This group mixes IHC 1+ with 2+/FISH− tumors, which have higher mRNA
-(Figure 3).</li>
-<li><strong>IHC 1+ vs. 0 (the harder clinical split):</strong> RNA still
-leads (0.652 vs. 0.554, p = 0.008; CV BH-adjusted p = 0.03).</li>
-<li><strong>Model:</strong> the RNA logistic model with HER2-low as the
-outcome gives <span class="math inline">\(\beta_1\)</span> = 0.81 (Table
-S10).</li>
-<li><strong>Not just ER biology:</strong> HER2-low is enriched in HR+
-disease [14], so RNA could be riding on ER biology. It still leads
-within ER+ tumors (0.655 vs. 0.559, p = 0.04) and in CV models that
-include ER (+0.13, BH-adjusted p = 0.03).</li>
-<li><strong>Ceiling:</strong> pathologists agree poorly on IHC 0 vs. 1+
-[15], which caps any predictor of this split.</li>
-<li><strong>Ultralow:</strong> TCGA “IHC 0” probably includes
-HER2-ultralow tumors (faint staining below 1+). These are now also
-eligible for trastuzumab deruxtecan in HR+ disease [11], so for HR+
-tumors the treatment decision now lies below IHC 0 vs. 1+.</li>
-</ul></li>
-</ul>
+and clearly better for HER2-low</strong> <strong>(Table 4, Figure
+5)</strong>. For the main target (366 tumors, 76 IHC 3+), the raw AUC is
+0.927 for mRNA vs. 0.893 for copy number (paired DeLong p = 0.045), and
+the CV logistic models agree in direction (corrected t-test p = 0.03,
+BH-adjusted 0.18). For HER2-low vs. HER2-0 and for IHC 1+ vs. 0, RNA
+leads clearly (0.685 vs. 0.573, p = 0.001; 0.652 vs. 0.554, p = 0.008),
+including within ER+ tumors. Results by target, era and ER status are in
+<strong>(Supplement S7)</strong>.</p>
 <p><strong>Combining does not help</strong> <strong>(Table S11, Table
-S12, Figure S5)</strong>. In CV logistic models, each step below leaves
-the AUC not significantly changed (all BH-adjusted p ≥ 0.22):</p>
-<ul>
-<li><strong>Copy number</strong> added to mRNA (the RNA + DNA
-model).</li>
-<li><strong>ER and PR</strong> added to RNA + DNA (the molecular
-model).</li>
-<li><strong>The 17q12 co-amplified genes</strong> GRB7, STARD3 and PGAP3
-added to the molecular model.
-<ul>
-<li>These genes sit in the same amplicon as ERBB2 and track it closely,
-so they add little independent information.</li>
-<li>The only trend is with the noisy reported-status target (+0.027,
-corrected t-test p = 0.06, BH-adjusted 0.22).</li>
-</ul></li>
-<li><strong>Tumor purity</strong> (ESTIMATE, with interaction) added to
-mRNA or to copy number.</li>
-<li><strong>Era and histology</strong> added to mRNA or to copy
-number.</li>
-</ul>
-<p>The selected model is ERBB2 mRNA alone (the RNA equation above), with
-a 10-fold CV AUC of 0.927.</p>
-<p><strong>Caveats.</strong></p>
-<ul>
-<li><strong>The label matters.</strong> The main label is IHC, a protein
-readout, which an mRNA measure tracks more directly than copy number.
-The FISH-resolved clinical status partly favors copy number instead, and
-there DNA does not beat RNA either. FISH itself could not be a predictor
-without leaking the label.</li>
-<li><strong>The scales differ.</strong> mRNA is continuous, while GISTIC
-has five levels.</li>
-<li><strong>mRNA is not a validated substitute.</strong> A commercial
-ERBB2 mRNA assay (Oncotype DX) missed some IHC/FISH-positive tumors
-[16], so mRNA alone is not a validated substitute for IHC/FISH.</li>
-</ul>
+S12, Figure S5)</strong>. In CV logistic models, adding copy number,
+ER/PR, the 17q12 co-amplified genes, tumor purity, or era and histology
+to the mRNA-based models does not significantly change the AUC (all
+BH-adjusted p ≥ 0.22). The selected model is therefore ERBB2 mRNA alone
+(the RNA equation above), with a 10-fold CV AUC of 0.927. Because the
+label is IHC, a protein readout, it may favor mRNA over copy number;
+this and other caveats are in <strong>(Supplement S7)</strong>.</p>
 <table>
 <caption><strong>Table 4.</strong> Primary RNA vs. DNA test: raw-value
 AUC of ERBB2 mRNA (RNA) and ERBB2 copy number (DNA, GISTIC) for each
@@ -2231,7 +2166,7 @@ A8-A08J this points to site-level annotation problems.</li>
 <li><strong>Lobular:</strong> four are lobular tumors from the later
 era. Two of them, plus A2-A0EQ, are FISH−, which points to IHC
 over-scoring. ERBB2 activating mutations occur in about 5% of lobular
-cancers [17]. They switch on HER2 signalling without overexpression, so
+cancers [14]. They switch on HER2 signalling without overexpression, so
 they matter for HER2-directed therapy but are unlikely to produce IHC 3+
 (mutation data are not available here).</li>
 </ul></li>
@@ -3620,8 +3555,93 @@ effects only, BH-adjusted.</caption>
 </tbody>
 </table>
 </div>
-<div id="s7.-logistic-models-and-cross-validation" class="section level2">
-<h2>S7. Logistic models and cross-validation</h2>
+<div id="s7.-rna-vs.-dna-detailed-results-and-caveats" class="section level2">
+<h2>S7. RNA vs. DNA: detailed results and caveats</h2>
+<p><strong>RNA vs. DNA by target.</strong> Raw-value AUCs are compared
+by paired DeLong test <strong>(Table 4)</strong>. CV results use the
+logistic models and corrected repeated k-fold t-test described in
+<strong>(Supplement S8)</strong>.</p>
+<ul>
+<li><strong>Main target (366 tumors, 76 IHC 3+):</strong>
+<ul>
+<li><strong>Primary test:</strong> the raw AUC is 0.927 for mRNA
+vs. 0.893 for copy number (difference 0.033, 95% CI 0.001–0.066, paired
+DeLong p = 0.045).</li>
+<li><strong>CV:</strong> the logistic models agree in direction (5-fold:
+0.927 vs. 0.889, corrected t-test p = 0.03, BH-adjusted 0.18; final
+10-fold: 0.927 vs. 0.890, p = 0.05) (Figure 5).</li>
+<li>The evidence is modest.</li>
+</ul></li>
+<li><strong>Other HER2 targets:</strong>
+<ul>
+<li><strong>Reported status included:</strong> RNA leads but not
+significantly (raw p = 0.06).</li>
+<li><strong>FISH-resolved clinical status:</strong> RNA leads on raw
+values (p = 0.04), but CV shows no difference (+0.009, corrected t-test
+p = 0.67, BH-adjusted 0.93).</li>
+</ul></li>
+<li><strong>By processing era:</strong> RNA leads in both eras, but
+neither difference is significant on its own (the later era has only 8
+positives).</li>
+<li><strong>HER2-low:</strong> RNA is clearly better.
+<ul>
+<li><strong>HER2-low vs. HER2-0:</strong> 0.685 vs. 0.573, p = 0.001.
+This group mixes IHC 1+ with 2+/FISH− tumors, which have higher mRNA
+(Figure 3).</li>
+<li><strong>IHC 1+ vs. 0 (the harder clinical split):</strong> RNA still
+leads (0.652 vs. 0.554, p = 0.008; CV BH-adjusted p = 0.03).</li>
+<li><strong>Model:</strong> the RNA logistic model with HER2-low as the
+outcome gives <span class="math inline">\(\beta_1\)</span> = 0.81 (Table
+S10).</li>
+<li><strong>Not just ER biology:</strong> HER2-low is enriched in HR+
+disease [15], so RNA could be riding on ER biology. It still leads
+within ER+ tumors (0.655 vs. 0.559, p = 0.04) and in CV models that
+include ER (+0.13, BH-adjusted p = 0.03).</li>
+<li><strong>Ceiling:</strong> pathologists agree poorly on IHC 0 vs. 1+
+[16], which caps any predictor of this split.</li>
+<li><strong>Ultralow:</strong> TCGA “IHC 0” probably includes
+HER2-ultralow tumors (faint staining below 1+). These are now also
+eligible for trastuzumab deruxtecan in HR+ disease [11], so for HR+
+tumors the treatment decision now lies below IHC 0 vs. 1+.</li>
+</ul></li>
+</ul>
+<p><strong>Combining predictors.</strong> In CV logistic models (Table
+S11, Table S12), each step below leaves the AUC not significantly
+changed (all BH-adjusted p ≥ 0.22):</p>
+<ul>
+<li><strong>Copy number</strong> added to mRNA (the RNA + DNA
+model).</li>
+<li><strong>ER and PR</strong> added to RNA + DNA (the molecular
+model).</li>
+<li><strong>The 17q12 co-amplified genes</strong> GRB7, STARD3 and PGAP3
+added to the molecular model.
+<ul>
+<li>These genes sit in the same amplicon as ERBB2 and track it closely,
+so they add little independent information.</li>
+<li>The only trend is with the noisy reported-status target (+0.027,
+corrected t-test p = 0.06, BH-adjusted 0.22).</li>
+</ul></li>
+<li><strong>Tumor purity</strong> (ESTIMATE, with interaction) added to
+mRNA or to copy number.</li>
+<li><strong>Era and histology</strong> added to mRNA or to copy
+number.</li>
+</ul>
+<p><strong>Caveats.</strong></p>
+<ul>
+<li><strong>The label matters.</strong> The main label is IHC, a protein
+readout, which an mRNA measure tracks more directly than copy number.
+The FISH-resolved clinical status partly favors copy number instead, and
+there DNA does not beat RNA either. FISH itself could not be a predictor
+without leaking the label.</li>
+<li><strong>The scales differ.</strong> mRNA is continuous, while GISTIC
+has five levels.</li>
+<li><strong>mRNA is not a validated substitute.</strong> A commercial
+ERBB2 mRNA assay (Oncotype DX) missed some IHC/FISH-positive tumors
+[17], so mRNA alone is not a validated substitute for IHC/FISH.</li>
+</ul>
+</div>
+<div id="s8.-logistic-models-and-cross-validation" class="section level2">
+<h2>S8. Logistic models and cross-validation</h2>
 <p><strong>Models.</strong> All models are logistic regressions that
 extend the RNA, DNA and RNA + DNA models of Section 2.3. Two models are
 specific enough to write out. The molecular model, which also produces
@@ -4342,8 +4362,8 @@ PR)</td>
 </tbody>
 </table>
 </div>
-<div id="s8.-tumors-where-the-molecular-model-disagrees-with-ihc" class="section level2">
-<h2>S8. Tumors where the molecular model disagrees with IHC</h2>
+<div id="s9.-tumors-where-the-molecular-model-disagrees-with-ihc" class="section level2">
+<h2>S9. Tumors where the molecular model disagrees with IHC</h2>
 <table>
 <caption><strong>Table S13.</strong> Scored tumors where the molecular
 logistic model (ERBB2 mRNA + GISTIC + ER + PR) strongly disagrees with
@@ -4701,6 +4721,9 @@ Oncol</em> 2023;34:645–659. PMID 37269905. DOI: <a href="https://doi.org/10.10
 <li>Liu J, et al. An integrated TCGA pan-cancer clinical data resource
 to drive high-quality survival outcome analytics. <em>Cell</em>
 2018;173:400–416. PMID 29625055. DOI: <a href="https://doi.org/10.1016/j.cell.2018.02.052">10.1016/j.cell.2018.02.052</a>.</li>
+<li>Desmedt C, et al. Genomic characterization of primary invasive
+lobular breast cancer. <em>J Clin Oncol</em> 2016;34:1872–1881. PMID
+26926684. DOI: <a href="https://doi.org/10.1200/JCO.2015.64.0334">10.1200/JCO.2015.64.0334</a>.</li>
 <li>Schettini F, et al. Clinical, pathological, and PAM50 gene
 expression features of HER2-low breast cancer. <em>NPJ Breast
 Cancer</em> 2021;7:1. PMID 33397968. DOI: <a href="https://doi.org/10.1038/s41523-020-00208-2">10.1038/s41523-020-00208-2</a>.</li>
@@ -4711,9 +4734,6 @@ DOI: <a href="https://doi.org/10.1001/jamaoncol.2021.7239">10.1001/jamaoncol.202
 reverse transcription polymerase chain reaction of the Oncotype DX test:
 an independent quality assurance study. <em>J Clin Oncol</em>
 2011;29:4279–4285. PMID 21990395. DOI: <a href="https://doi.org/10.1200/JCO.2011.34.7963">10.1200/JCO.2011.34.7963</a>.</li>
-<li>Desmedt C, et al. Genomic characterization of primary invasive
-lobular breast cancer. <em>J Clin Oncol</em> 2016;34:1872–1881. PMID
-26926684. DOI: <a href="https://doi.org/10.1200/JCO.2015.64.0334">10.1200/JCO.2015.64.0334</a>.</li>
 </ol>
 <!-- Cross-references: in-text (Figure/Table X) citations link to the item; captions link back to each citation -->
 <style>
