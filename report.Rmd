@@ -25,112 +25,102 @@ pr <- \(pc, col) round(pbio[[col]][pbio$PC == pc], 2)
 
 ### 1.1 Input and normalization
 
-RNA-seq covers 1,212 samples (1,093 primary tumor, 112 adjacent normal, 7 metastasis) and 20,502 genes. The values are not raw counts. The upper quartile of non-zero values is ~1000 in every sample, which matches TCGA's upper-quartile (UQ) scaled RSEM, so read depth is already scaled out **(Figure S1)**.
+RNA-seq covers 1,212 samples (1,093 primary tumor, 112 adjacent normal, 7 metastasis) and 20,502 genes. The values are TCGA upper-quartile (UQ) scaled RSEM rather than raw counts, so read depth is already scaled out **(Figure S1)**.
 
-Processing steps:
-
-- Values were rounded, and genes with ≥10 counts in ≥10% of samples were kept (16,453 genes).
-- DESeq2 size factors were estimated. They sit near 1 (0.79–1.11), so they change little beyond the UQ scaling.
-- A blind variance-stabilizing transform (VST) was applied. Because the inputs are scaled rather than true counts, VST serves as an approximate variance stabilizer. For the same reason, later differential expression uses limma on VST values rather than DESeq2 count tests.
-
-No sample was an outlier, so all were kept.
+Values were rounded, and genes with ≥10 counts in ≥10% of samples were kept (16,453 genes). A blind DESeq2 variance-stabilizing transform (VST) was then applied. DESeq2's size factors sit near 1, so they change little beyond the UQ scaling. Because the inputs are scaled rather than true counts, VST is an approximate stabilizer here, and later differential expression uses limma on VST values. No sample was an outlier.
 
 ### 1.2 Sources of variation
 
-Across all samples, adjacent normals separate from tumors. ER-negative tumors form a distinct cluster with high expression of basal markers (KRT5, KRT14, KRT17, FOXC1), consistent with the basal-like subtype **(Figure 1)**.
+Across all samples, adjacent normals separate from tumors. ER-negative tumors form a distinct cluster with high basal-marker expression, consistent with the basal-like subtype **(Figure 1)**.
 
 ```{r fig1, fig.cap = "**Figure 1.** PCA of all samples (VST, top 2,000 variable genes). Left: sample type and, for primary tumors, ER status by IHC. Right: basal score (mean centered VST of KRT5, KRT14, KRT17, FOXC1); normals also score high because of myoepithelial cells.", out.width = "100%"}
 knitr::include_graphics(file.path(r1, "pca_all_samples.png"))
 ```
 
-On primary tumors only, each of PC1–5 was regressed on each clinical and technical feature, using adjusted R² **(Figure 2)**. Rare categorical levels (<10 samples) were pooled into "Other", and ERBB2 copy number (GISTIC, −2 to 2) was treated as categorical. HER2 FISH is available for `r fish_n` tumors, only 39% of which are IHC-equivocal, so it was not limited to equivocal cases.
+Within primary tumors, PC1–5 were each regressed on clinical and technical features (adjusted R²) **(Figure 2)**:
+
+- **PC1 (16.6%)** is the ER/PR axis (luminal vs. basal), consistent with the TCGA intrinsic subtypes [1].
+- **PC2 (7.9%)** tracks fraction genome altered and lobular vs. ductal histology, and possibly tumor purity [2, 3].
+- **PC3 (4.3%)** mixes HER2 biology (ERBB2 copy number, HER2 IHC) with plate.
+- **PC4 (3.6%)** is mainly plate and processing era. **PC5** is weak.
+
+Only PC1–2 are stable across transforms, so only they are interpreted firmly **(Table S1)**.
+
+HER2 IHC has no association with PC1. Its ERBB2 copy-number association (0.10) likely reflects copy losses in basal tumors rather than amplification. HER2+ tumors therefore occur in both ER+ and ER− disease, and clinical HER2+ differs from the HER2-enriched subtype [4]. Global variance alone cannot define HER2+, which motivates the targeted definitions in Step 2.
 
 ```{r fig2, fig.cap = "**Figure 2.** Variance in each primary-tumor PC explained by clinical and technical features (adjusted R², linear model; negative values shown as 0). Percent variance per PC is shown under each axis label. Era: plates before A213 vs. plate A213 and after.", out.width = "75%"}
 knitr::include_graphics(file.path(r1, "pc_clinical_heatmap.png"))
 ```
 
+### 1.3 Processing batch
+
+Plate effects are mainly a step between two processing eras at plate A213, which is also where adjacent normals stop being sequenced **(Figure S2)**. This is consistent with plate effects in TCGA being confounded with processing time [5].
+
+The eras differ in more than processing **(Table 1)**:
+
+- **Normals:** 110 of 112 normals are in the earlier era **(Table S2)**.
+- **Histology:** the later era is much more often lobular (43% vs. 12%), consistent with TCGA's expanded lobular cohort [2].
+- **ERBB2 amplification:** the apparent drop (13.5% to 6.6%) disappears within ductal tumors, and copy number is missing for 39% of later tumors.
+- **Receptors:** ER, PR and HER2 IHC are balanced.
+
 ```{r tab1}
+read_csv(file.path(r11, "era_balance.csv")) |>
+  mutate(p = if_else(is.na(p), "", format(p, digits = 2))) |>
+  knitr::kable(caption = "**Table 1.** Sample types and tumor features by processing era. Percentages are among samples with known values; p from Fisher's exact test (feature vs. rest), unadjusted.")
+```
+
+After accounting for biology, plate still explains `r pr("PC3", "Plate")` of PC3 and `r pr("PC4", "Plate")` of PC4, over half of it era. The share of normals on a plate explains little **(Table S3)**.
+
+**Decision: no plate correction** **(Supplement S4)**. There are three reasons:
+
+1. Era is confounded with sample type and histology **(Table 1)**, so correction would remove real biology. Protecting the labels instead would overstate group differences [6].
+2. Correction distorts plates holding few tumors **(Table S4)**.
+3. ER/PR/HER2 signal barely depends on plate **(Figure S3, Figure S4)**.
+
+Replicate-based correction (RUV-III with pseudo-replicates, PRPS) is the principled option for TCGA [5]. If technical replicates run across plates were available, plate correction would be reconsidered.
+
+**Downstream handling:**
+
+- **Steps 2 and 4:** uncorrected VST, with era and histology as sensitivity covariates. Step 2 builds the clinical label from the HER2 IHC score (0/1+/2+/3+) with FISH, allowing a HER2-low group.
+- **Step 3:** cluster uncorrected VST, then test clusters against plate and era within histology.
+- **Step 5:** compare tumor and normal within patients (all 112 normals have a matched tumor).
+
+# Supplement
+
+## S1. QC and PC summary
+
+```{r figS1, fig.cap = "**Figure S1.** Per-sample QC by sample type: UQ-scaled total, upper quartile of non-zero values (~1000 in every sample, confirming UQ scaling), genes detected, and DESeq2 size factor (0.79–1.11)."}
+knitr::include_graphics(file.path(r1, "qc_boxplots.png"))
+```
+
+Rare categorical levels (<10 samples) were pooled into "Other", and ERBB2 copy number (GISTIC, −2 to 2) was treated as categorical. HER2 FISH is available for `r fish_n` tumors, only 39% of which are IHC-equivocal **(Table S1)**.
+
+```{r tabS1}
 read_csv(file.path(r1, "pca_variance.csv")) |>
   left_join(assoc |> group_by(PC) |> slice_max(adj_r2, n = 3) |>
               summarise(top = paste0(feature, " (", round(adj_r2, 2), ")", collapse = "; ")), by = "PC") |>
   select(PC, `% variance` = pct_var, `|r| vs log2(UQ+1) PC` = max_abs_r_log2, `Top features (adj. R²)` = top) |>
-  knitr::kable(caption = "**Table 1.** Primary-tumor PC1–5: percent variance, best match to PCs from a log2(UQ+1) transform, and the strongest feature associations.")
-```
-
-**Interpretation.**
-
-- **PC1 (16.6%)** is the ER/PR hormone-receptor axis (luminal vs. basal), consistent with the TCGA intrinsic subtypes [1].
-- **PC2 (7.9%)** tracks fraction genome altered and histology (lobular vs. ductal). It may also reflect tumor purity, since lobular tumors are often lower purity and copy-number quiet [2, 3].
-- **PC3 (4.3%)** carries HER2 biology (ERBB2 copy number, HER2 IHC) together with plate.
-- **PC4 (3.6%)** is mainly plate and processing era. **PC5** is weak and largely unexplained.
-- **Robustness:** PC1 is stable across transforms (|r| 0.99) and PC2 mostly so (0.92), while PC3–4 shift (0.82–0.83) **(Table 1)**. Only PC1–2 are interpreted firmly.
-
-HER2 IHC has no association with PC1 **(Figure 2)**. ERBB2 copy number does explain 0.10 of PC1, likely through copy losses in basal, genomically unstable tumors rather than amplification. The lack of an IHC association fits HER2+ tumors occurring in both ER+ and ER− disease. Clinical HER2+ also differs from the HER2-enriched intrinsic subtype [4]. Global variance alone therefore cannot define HER2+, which motivates the targeted definitions in Step 2.
-
-### 1.3 Processing batch
-
-Plate effects are mainly a shift between two processing eras rather than a gradual drift. Tumor PC3 and PC4 plate means step up at plate A213, which is also where adjacent normals stop being sequenced **(Figure 3)**. This boundary defines the two eras. PC3–4 shift between transforms **(Table 1)**, so the shift is read as relative rather than exact. This matches reports that plate is a major source of unwanted variation in TCGA RNA-seq and is confounded with processing time [5].
-
-```{r fig3, fig.cap = "**Figure 3.** Mean primary-tumor PC3 and PC4 scores per plate, in processing order, colored by era. Point size is the number of tumors; open points mark plates with <10 tumors."}
-knitr::include_graphics(file.path(r11, "plate_drift.png"))
-```
-
-The two eras differ in more than processing **(Table 2)**:
-
-- **Normals:** nearly all normals (110 of 112) were sequenced on plates before A213 **(Table S1)**.
-- **Lobular histology:** the later era is much more often lobular (43% vs. 12%), consistent with the expanded lobular cohort analysed by TCGA [2].
-- **ERBB2 amplification:** amplification looks less common in the later era (6.6% vs. 13.5%). However, copy number is missing for 39% of later tumors (vs. 4%), and within ductal tumors the rates match (13.3% vs. 14.6%). The difference therefore reflects histology, not processing.
-- **Receptors:** ER, PR and HER2 IHC are balanced across eras.
-
-```{r tab2}
-read_csv(file.path(r11, "era_balance.csv")) |>
-  mutate(p = if_else(is.na(p), "", format(p, digits = 2))) |>
-  knitr::kable(caption = "**Table 2.** Sample types and tumor features by processing era. Percentages are among samples with known values; p from Fisher's exact test (feature vs. rest), unadjusted.")
-```
-
-Plate and era still explain PC3–4 variance after accounting for ER, HER2 IHC, histology and fraction genome altered **(Table S2)**:
-
-- Plate explains `r pr("PC3", "Plate")` of PC3 and `r pr("PC4", "Plate")` of PC4 (adjusted partial R²).
-- Over half of that is era.
-- The share of normals on a plate explains little (≤ `r max(pr("PC3", "Plate % normal"), pr("PC4", "Plate % normal"))`).
-
-**Decision: no plate correction.** Correction was tested **(Supplement S4)**, but it was not applied, for three reasons:
-
-1. Era is confounded with sample type and histology **(Table 2)**. Correcting by plate or era would partly remove normal-tissue and lobular biology. Protecting those labels instead would overstate group differences [6].
-2. Plates with very few tumors are distorted by correction **(Table S3)**.
-3. Correction changes ER/PR/HER2 associations little **(Figure S2)**, and the key marker genes (ESR1, PGR, ERBB2, GRB7) barely depend on plate **(Figure S3)**.
-
-Replicate-based correction (RUV-III with pseudo-replicates, PRPS) is the principled way to remove plate effects in TCGA [5]. It was not pursued here because era is confounded with histology and sample type. If technical replicates of the same samples run across plates were available, plate effects could be estimated directly, separately from biology, and plate correction would be reconsidered.
-
-**Downstream handling:**
-
-- **Steps 2 and 4** use uncorrected VST, with era and histology as sensitivity covariates (era alone would also absorb lobular biology).
-  - Step 2 builds the clinical label from the HER2 IHC score (0/1+/2+/3+) with FISH, which allows a HER2-low group, and then adds RNA and copy number.
-- **Step 3** clusters uncorrected VST and then tests clusters against plate and era, within histology.
-- **Step 5** compares tumor and normal within patients (all 112 normals have a matched tumor, 89 on the same plate), which removes most plate and era effects.
-
-# Supplement
-
-## S1. QC
-
-```{r figS1, fig.cap = "**Figure S1.** Per-sample QC by sample type: UQ-scaled total, upper quartile of non-zero values, genes detected, and DESeq2 size factor."}
-knitr::include_graphics(file.path(r1, "qc_boxplots.png"))
+  knitr::kable(caption = "**Table S1.** Primary-tumor PC1–5: percent variance, best match to PCs from a log2(UQ+1) transform (stability), and the strongest feature associations.")
 ```
 
 ## S2. Plate composition
 
-All 112 normals sit on 17 plates, two of which hold only normals: A089 (21) and A19E (1) **(Table S1)**. For those 22 normals, plate cannot be separated from normal-tissue biology.
+```{r figS2, fig.cap = "**Figure S2.** Mean primary-tumor PC3 and PC4 scores per plate, in processing order, colored by era. Point size is the number of tumors; open points mark plates with <10 tumors. PC3–4 change with the transform (Table S1), so the shift is read as relative."}
+knitr::include_graphics(file.path(r11, "plate_drift.png"))
+```
 
-```{r tabS1}
+All 112 normals sit on 17 plates, two of which hold only normals: A089 (21) and A19E (1) **(Table S2)**. For those 22 normals, plate cannot be separated from normal-tissue biology.
+
+```{r tabS2}
 read_csv(file.path(r11, "plate_composition.csv")) |>
-  knitr::kable(caption = "**Table S1.** Samples per sequencing plate in processing order: counts of adjacent normal, primary tumor and metastasis, and each type's percentage of the plate.")
+  knitr::kable(caption = "**Table S2.** Samples per sequencing plate in processing order: counts of adjacent normal, primary tumor and metastasis, and each type's percentage of the plate.")
 ```
 
 ## S3. Batch effects beyond biology
 
-```{r tabS2}
+```{r tabS3}
 pbio |> mutate(across(-c(PC, n), \(x) round(x, 3))) |>
-  knitr::kable(caption = "**Table S2.** Adjusted partial R² of each batch term added to a model of the PC on ER, HER2 IHC, histology and fraction genome altered (complete cases). 'Plate beyond era' adds plate to a model that already includes era.")
+  knitr::kable(caption = "**Table S3.** Adjusted partial R² of each batch term added to a model of the PC on ER, HER2 IHC, histology and fraction genome altered (complete cases). 'Plate beyond era' adds plate to a model that already includes era.")
 ```
 
 ## S4. Plate correction test (not applied)
@@ -143,27 +133,27 @@ Plate was removed from primary-tumor VST with `limma::removeBatchEffect` [7] in 
 
 Plate association after correction is ~0 by construction, so it is not shown. The real check is whether biology survives:
 
-- **ER and PR** associations with PC1 change little **(Figure S2)**.
+- **ER and PR** associations with PC1 change little **(Figure S3)**.
 - **HER2 IHC on PC3** rises slightly (0.13 to 0.14, or 0.16 when protected), so plate partly masked HER2 signal rather than creating it.
-- **Marker genes** keep their association with clinical labels, and protecting the labels inflates them, as expected [6] **(Figure S3)**.
+- **Marker genes** keep their association with clinical labels, and protecting the labels inflates them, as expected [6] **(Figure S4)**.
 
-```{r figS2, fig.cap = "**Figure S2.** Adjusted R² of primary-tumor PC1–5 with ER, PR and HER2 IHC, before and after each plate correction.", out.width = "95%"}
+```{r figS3, fig.cap = "**Figure S3.** Adjusted R² of primary-tumor PC1–5 with ER, PR and HER2 IHC, before and after each plate correction.", out.width = "95%"}
 knitr::include_graphics(file.path(r11, "pc_assoc_by_version.png"))
 ```
 
-```{r figS3, fig.cap = "**Figure S3.** Adjusted R² of marker genes (ESR1, PGR, ERBB2, GRB7) with their clinical label, for each plate correction.", out.width = "65%"}
+```{r figS4, fig.cap = "**Figure S4.** Adjusted R² of marker genes (ESR1, PGR, ERBB2, GRB7) with their clinical label, for each plate correction.", out.width = "65%"}
 knitr::include_graphics(file.path(r11, "marker_r2.png"))
 ```
 
-Correcting all 41 plates sets each single-sample plate's tumor to the cohort mean, which erases its biology **(Table S3)**. For example, the ER-negative tumor on plate A26B has low ESR1 (6.2; median 7.1 in ER− vs. 13.3 in ER+ tumors). The 41-plate correction replaces this with the cohort mean (ESR1 11.8), while pooling keeps it at 6.6. The same tumor is HER2 IHC-positive but has low ERBB2 mRNA (ERBB2 11.8 vs. a median of 14.9 in IHC-positive tumors), an RNA/IHC discordance followed up in Step 2.
+Correcting all 41 plates sets each single-sample plate's tumor to the cohort mean, which erases its biology **(Table S4)**. For example, the ER-negative tumor on plate A26B has low ESR1 (6.2; median 7.1 in ER− vs. 13.3 in ER+ tumors). The 41-plate correction replaces this with the cohort mean (ESR1 11.8), while pooling keeps it at 6.6. The same tumor is HER2 IHC-positive but has low ERBB2 mRNA (ERBB2 11.8 vs. a median of 14.9 in IHC-positive tumors), an RNA/IHC discordance followed up in Step 2.
 
-```{r tabS3}
+```{r tabS4}
 read_csv(file.path(r11, "small_plate_samples.csv")) |>
   select(Sample = sample_id, Plate, `Pooled into`, ER, `HER2 IHC`,
          `ERBB2 raw` = ERBB2_Uncorrected, `ERBB2 41` = `ERBB2_Plate (41)`, `ERBB2 pooled` = `ERBB2_Plate (pooled)`,
          `ESR1 raw` = ESR1_Uncorrected, `ESR1 41` = `ESR1_Plate (41)`, `ESR1 pooled` = `ESR1_Plate (pooled)`) |>
   mutate(across(where(is.numeric), \(x) round(x, 1))) |>
-  knitr::kable(caption = "**Table S3.** Tumors on plates with <10 tumors: ERBB2 and ESR1 (VST) uncorrected (raw), after 41-plate correction, and after pooled-plate correction.")
+  knitr::kable(caption = "**Table S4.** Tumors on plates with <10 tumors: ERBB2 and ESR1 (VST) uncorrected (raw), after 41-plate correction, and after pooled-plate correction.")
 ```
 
 # References
