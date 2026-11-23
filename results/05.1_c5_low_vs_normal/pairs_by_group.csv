@@ -1,0 +1,5 @@
+group,tumors,with_matched_normal
+C1-C3,718,74
+C4,219,19
+C5 ERBB2-high,73,8
+C5 ERBB2-low,83,11

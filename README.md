@@ -24,6 +24,9 @@ Run from repo root (`Rscript analyses/<script>.R`); outputs go to `results/<scri
 | 2 | `analyses/02.1_rna_vs_dna.R` | Clinical exploration, label-noise check by site, RNA vs DNA (raw paired AUC), purity, CV logistic models, discordant tumors |
 | 3 | `analyses/03.0_pam_clusters.R` | PAM clusters (top 2000 genes, k by silhouette + consensus PAC), robustness, PAM50 (genefu), HER2/batch associations, HER2-low by cluster, C5 ERBB2 modes |
 | 4 | `analyses/04.0_c5_low_enet.R` | C5 ERBB2-low vs C5 ERBB2-high and vs C1–C3 pooled: elastic net (purity unpenalized), selection stability, compact logistic model, sensitivity (no purity; + era/lobular) |
+| 5 | `analyses/05.0_c5_low_gsea.R` | C5 ERBB2-low vs C1–C3 and vs C5 ERBB2-high: limma + TREAT (unadjusted and ESTIMATE-adjusted), volcano plots, GSEA (fgsea Hallmark/Reactome, camera check), MCP-counter immune/stromal scores (markers in `analyses/ref/`), ER IHC % check |
+| 5 | `analyses/05.1_c5_low_vs_normal.R` | C5 ERBB2-low tumors vs matched adjacent normal (11 pairs): paired limma + TREAT, volcano with Step 4 genes, Hallmark GSEA + camera, paired MCP-counter, representativeness of the pairs |
+| – | `analyses/helpers.R` | Shared helpers: current gene symbols without alias collisions; MCP-counter marker list |
 
 ## Key notes for later steps
 
@@ -51,9 +54,9 @@ Run from repo root (`Rscript analyses/<script>.R`); outputs go to `results/<scri
 - ESTIMATE score (`estimate_score`, higher = lower purity) is available per tumor for Steps 3–5.
 
 **Report state (continue numbering from here)**
-- Main: Sections 1–4; Figures 1–9; Tables 1–7. Next: Figure 10, Table 8.
-- Supplement: Sections S1–S13; Figures S1–S8; Tables S1–S25. Next: S14, Figure S9, Table S26.
-- References [1]–[23], numbered by first citation in the whole document (main then supplement). After moving text, renumber by first appearance.
+- Main: Sections 1–5; Figures 1–13; Tables 1–8. Next: Figure 14, Table 9.
+- Supplement: Sections S1–S14; Figures S1–S9; Tables S1–S29. Next: S15, Figure S10, Table S30.
+- References [1]–[28], numbered by first citation in the whole document (main then supplement). After moving text, renumber by first appearance.
 - Model inline values come from `results/02.1_rna_vs_dna/model_coefficients.csv` via `b(model, term)` in the setup chunk; Step 3 and 4 values are read from `results/03.0_pam_clusters/*.csv` and `results/04.0_c5_low_enet/*.csv` in the setup chunk.
 - Figure colors (Step 3 on): PAM clusters C1–C5 = Dark2 (teal, orange, lavender, magenta, green); PAM50 = browns/yellow/plum/aqua; ERBB2 GISTIC = blue–red (NA white). Reuse these in later steps.
 
@@ -68,6 +71,13 @@ Run from repo root (`Rscript analyses/<script>.R`); outputs go to `results/<scri
 - 7-gene compact model: genes most often in the in-fold top 7 (VSTM2L, KRT86, MMP1, TMEM45A up; MAPT, JADE2/PHF15, BCL2 down), Firth fit; CV AUC 0.964 (procedure-level). Only VSTM2L and MAPT are consistently picked.
 - Gene lists for Step 5: `results/04.0_c5_low_enet/features.csv` (stable = `sel_freq >= 0.7`; `symbol` = current HGNC). Step 5 candidate programs: ER signalling, proliferation, hypoxia (TMEM45A), immune/myeloid (S100A9).
 - Packages added: `logistf` (Firth).
+
+**Step 5 findings and conventions**
+- Gene symbols: use `current_symbols()` in `analyses/helpers.R` (alias remapping alone overwrote real genes, e.g. C2orf48 -> RRM2). MCP-counter markers via `mcp_markers()` (source file lists CAVIN2 as "C").
+- DE: limma-trend robust on VST, TREAT (|log2 FC| > 1) for significance; GSEA = fgsea on moderated t (ranks programs) + camera check (default 0.01 and estimated inter-gene correlation; "robust" = camera estimated FDR < 0.05). MCP-counter group tests use HC3 robust SEs.
+- C5 ERBB2-low vs C1–C3: camera-confirmed in both models = low early estrogen response only (ESR1 −2.4 log2, unchanged by purity adjustment; holds within IHC ER+ tumors; staining somewhat weaker, 53% vs 72% at ≥80%, but only 1/32 ER-low <10%). Glycolysis and mTORC1 camera-confirmed only after purity adjustment (suggestive). NK MCP score uses 3 of 9 markers (low-expression filter). Immune/EMT, proliferation, hypoxia up but not robust to strict camera. Infiltrate: more T/B/monocytic/fibroblast; relative to ESTIMATE, more monocytic-lineage and fibroblast signal.
+- vs C5 ERBB2-high: only the 17q12 amplicon passes TREAT; proliferation lower (fgsea, camera default only).
+- Tumor vs normal (11 pairs, sites BH/E9/GI): Step 4 genes move the same way as vs luminal; not shown to be group-specific. Nice-to-have (noted in report 5.1): same comparison in the 74 luminal pairs and a difference-in-differences test.
 
 **Plan for Steps 3–5**
 - Step 3: PAM on uncorrected VST (refilter genes on tumors). Test clusters vs plate/era **within histology** (e.g. CMH or ductal-only). Check stability.

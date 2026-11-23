@@ -50,6 +50,28 @@ a4 <- \(c, m) f3(auc4$auc[auc4$comparator == c & auc4$model == m])
 d4 <- \(c, v) cmp4[cmp4$comparator == c & cmp4$vs == v, ]
 or4 <- \(t) sprintf("%.2f", exp(cm4$beta[cm4$comparator == "C1-C3" & cm4$term == t]))
 n4 <- \(c, up = NA) sum(stab4$comparator == c & (is.na(up) | (stab4$diff > 0) == up))
+# Step 5 differential expression, GSEA (fgsea + camera check), MCP-counter, tumor vs. matched normal
+r50 <- "results/05.0_c5_low_gsea"; r51 <- "results/05.1_c5_low_vs_normal"
+de5 <- read_csv(file.path(r50, "limma.csv")); gs5 <- read_csv(file.path(r50, "gsea.csv")); cam5 <- read_csv(file.path(r50, "camera_hallmark.csv"))
+mcp5 <- read_csv(file.path(r50, "mcp_counter_tests.csv")); le5 <- read_csv(file.path(r50, "hallmark_stable_genes.csv"))
+mk5 <- read_csv(file.path(r50, "mcp_counter_markers.csv")); er5 <- read_csv(file.path(r50, "er_percent.csv"))
+erf5 <- read_csv(file.path(r50, "er_pos_followup.csv")); pbg51 <- read_csv(file.path(r51, "pairs_by_group.csv"))
+de51 <- read_csv(file.path(r51, "limma.csv")); key51 <- read_csv(file.path(r51, "key_genes.csv"))
+mcp51 <- read_csv(file.path(r51, "mcp_counter_paired.csv")); gs51 <- read_csv(file.path(r51, "gsea_hallmark.csv"))
+cam51 <- read_csv(file.path(r51, "camera_hallmark.csv")); pairs51 <- read_csv(file.path(r51, "pairs.csv"))
+rep51 <- read_csv(file.path(r51, "paired_representativeness.csv"))
+fpe <- \(p) if_else(p < 0.001, "< 0.001", paste("=", fp(p)))                       # "p < 0.001" / "p = 0.012"
+sg <- \(x, d = 2) paste0(if_else(x < 0, "−", "+"), formatC(abs(x), format = "f", digits = d))   # signed, true minus
+nde <- \(d, up) sum(d$treat_padj < 0.05 & if (up) d$logFC > 0 else d$logFC < 0)     # TREAT (|log2 FC| > 1), BH < 0.05
+nde5 <- \(c, a, up) nde(filter(de5, comparator == c, adjustment == a), up)
+g5 <- \(g, c, a) { r <- filter(de5, gene == g, comparator == c, adjustment == a); paste0(sg(r$logFC), ", BH p ", fpe(r$adj.P.Val)) }
+h5 <- \(c, a, p) { r <- filter(gs5, collection == "Hallmark", comparator == c, adjustment == a, pathway == p)
+  paste0("NES ", sg(r$NES), ", BH p ", fpe(r$padj)) }
+c5 <- \(c, a, p, k = "Estimated") { r <- filter(cam5, comparator == c, adjustment == a, pathway == p, correlation == k)
+  paste0("camera FDR ", fpe(r$FDR)) }
+m5 <- \(pop, c, a) { r <- filter(mcp5, population == pop, comparator == c, adjustment == a)
+  paste0(sg(r$diff), ", BH p ", fpe(r$padj)) }
+k51 <- \(g) { r <- filter(de51, gene == g); paste0(sg(r$logFC, 1), ", BH p ", fpe(r$adj.P.Val)) }
 ```
 
 *Claude Code was run in manual mode using Opus 5.5. The PI reviewed all code and analytical choices.*
@@ -397,6 +419,130 @@ For therapy, two findings are relevant:
 
 Whether this group's expression state changes ADC benefit cannot be tested here. Step 5 tests the candidate programs behind these genes (ER signalling, proliferation, hypoxia, immune) and compares the two C5 groups gene by gene.
 
+## 5. Biology of the C5 ERBB2-low group
+
+Section 4 asked which few genes describe the C5 ERBB2-low group. This section asks what biology separates it, gene by gene and pathway by pathway, against the same two comparators: the luminal clusters (C1–C3, pooled) and the amplified tumors in its own cluster (C5 ERBB2-high). It then estimates immune and stromal cell content and compares the group with its matched normal breast tissue.
+
+### 5.1 Methods
+
+**Differential expression.** Each gene was modelled across all primary tumors with limma on the uncorrected VST (moderated t-statistics with an intensity trend; robust to genes with outlying variances):
+
+$$\text{VST}_{gi} = \sum_{c} \mu_{gc}\,\mathbb{1}[\text{group}_i = c] + \gamma_g\,\text{Stromal}_i + \eta_g\,\text{Immune}_i + \varepsilon_{gi}$$
+
+- **group:** C1, C2, C3, C4, C5 ERBB2-high or C5 ERBB2-low; $\mu_{gc}$ is the mean of gene $g$ in group $c$. Keeping C1–C3 as separate groups stops their differences from inflating the residual variance.
+- **Contrasts:** C5 ERBB2-low vs. C1–C3 is $\mu_{\text{low}} - \sum_{c \in \text{C1–C3}} w_c\,\mu_c$, with $w_c$ the share of the 718 luminal tumors in cluster $c$ (the pooled luminal mean; Step 4 used 717, dropping one tumor without histology). C5 ERBB2-low vs. C5 ERBB2-high is $\mu_{\text{low}} - \mu_{\text{high}}$.
+- **Stromal, Immune:** the two ESTIMATE component scores (/1,000). The **unadjusted** model leaves them out and shows every difference, infiltration included. The **purity-adjusted** model includes them and asks what differs at equal infiltration. ESTIMATE is itself built from stromal and immune genes, so this adjustment is approximate, not a deconvolution.
+- **Significant genes:** TREAT, a moderated t-test of whether |log2 fold change| on the VST scale exceeds 1 (rather than filtering on fold change after testing), BH-adjusted p < 0.05. VST shrinks fold changes of low-expressed genes, so the threshold is conservative for them. Where a p-value for any difference is quoted, it is the ordinary moderated t-test (BH).
+
+**Pathways.** Gene set enrichment analysis (GSEA, fgsea) ranked all genes by the moderated t of each contrast and tested the 50 MSigDB Hallmark gene sets. Results are normalized enrichment scores (NES; positive = higher in C5 ERBB2-low) with BH-adjusted p. fgsea permutes genes, not tumors, so it ignores correlation between genes; with about 800 tumors it calls almost any coherent program significant. Every Hallmark result was therefore checked with camera, a test on the same design and contrasts that allows for inter-gene correlation, in two settings:
+
+- **Default:** limma's small preset correlation (0.01).
+- **Estimated (strict):** each set's own correlation, estimated from the data. Strongly co-expressed programs, such as proliferation, then count as only a few independent genes.
+
+fgsea ranks the programs; a program significant by camera with estimated correlation is called **camera-confirmed** **(Table S26)**. Reactome pathways were run with fgsea as finer detail **(Supplement S14)**.
+
+**Immune and stromal cells.** Each tumor's abundance of 8 immune and 2 stromal populations was scored by MCP-counter: the mean VST of marker genes chosen to be specific to one population (1–32 markers present per population). Some markers were removed by the low-expression filter of Section 1.1: the CD8 T-cell score is a single gene (CD8B), and the NK score uses 3 of 9 markers (the KIR genes and NCR1 are missing), so NK results are weak. These scores compare amounts between tumors, not fractions within a tumor. Groups were compared, within each contrast, by a linear model with heteroskedasticity-robust (HC3) standard errors:
+
+$$\text{Score}_i = \beta_0 + \beta_1\,\text{C5 ERBB2-low}_i + \gamma\,\text{Stromal}_i + \eta\,\text{Immune}_i + \varepsilon_i$$
+
+where C5 ERBB2-low$_i$ is 1 for tumors in the group and 0 for the comparator, and $\beta_1$ is the difference in score (VST units). Without the ESTIMATE terms, $\beta_1$ is the plain difference in abundance. With them, it shows each population **relative to the ESTIMATE stromal and immune signal**. This is not a true composition: ESTIMATE weights cell types in its own way and shares a few genes with the MCP-counter markers. p-values are BH-adjusted across the 20 tests of each model (10 populations × 2 comparators).
+
+**Tumor vs. matched normal tissue.** Only `r n_distinct(pairs51$patient_id)` of the 83 C5 ERBB2-low tumors have an adjacent normal sample from the same patient (`r sum(table(pairs51$patient_id, pairs51$plate) == 2)` on the same plate; from 3 sites). Their purity shows no detectable difference from the other `r rep51$n[!rep51$paired]` (median ESTIMATE `r round(rep51$estimate_median[rep51$paired])` vs. `r round(rep51$estimate_median[!rep51$paired])`; Wilcoxon p = `r fp(rep51$wilcox_p_estimate[1])`, underpowered), and their PAM50 mix is similar. These pairs were compared with a paired limma model:
+
+$$\text{VST}_{gpi} = \alpha_{gp} + \tau_g\,\text{Tumor}_{pi} + \varepsilon_{gpi}$$
+
+where $\alpha_{gp}$ is a separate baseline for each patient $p$, Tumor$_{pi}$ is 1 for the tumor sample, and $\tau_g$ is the tumor–normal difference. TREAT, GSEA with camera, and paired t-tests of MCP-counter scores (BH) followed. With 11 pairs, this comparison is descriptive.
+
+**Not done.** Whether a tumor–normal change is specific to this group would need the same comparison in luminal patients (`r pbg51$with_matched_normal[pbg51$group == "C1-C3"]` luminal tumors have a matched normal) and a test of the difference between the two changes. This would be a useful addition.
+
+### 5.2 Genes
+
+**Against the luminal clusters, ER genes are lower and inflammatory genes higher** **(Figure 10)**. By TREAT, `r nde5("C1-C3", "Unadjusted", TRUE)` genes are more than two-fold higher and `r nde5("C1-C3", "Unadjusted", FALSE)` more than two-fold lower in C5 ERBB2-low.
+
+- **Lower:** ER/luminal genes, led by ESR1, THSD4, BCL2, MAPT, TBC1D9 and RERG.
+  - **ESR1 is lower before and after purity adjustment** (log2 fold change `r g5("ESR1", "C1-C3", "Unadjusted")` and `r g5("ESR1", "C1-C3", "Purity-adjusted")`, moderated t), so low ER is not dilution by infiltrating cells.
+  - **It holds within IHC ER+ tumors**, so the group's ER− tumors do not explain it: median ESR1 `r f2(er5$ESR1_median[2])` vs. `r f2(er5$ESR1_median[1])` VST (`r er5$n_er_pos[2]` vs. `r er5$n_er_pos[1]` tumors; Wilcoxon p `r fpe(er5$wilcox_p_ESR1[1])`), with a lower early-estrogen-response score (mean z of the Hallmark genes; p `r fpe(er5$wilcox_p_er_score[1])`).
+  - **It holds after purity adjustment and in strongly stained tumors.** Within IHC ER+ tumors, ESR1 stays lower with the ESTIMATE stromal and immune scores in a linear model (`r sg(erf5$adj_diff[1])` VST, p `r fpe(erf5$adj_p[1])`). ER staining is somewhat weaker in this group (where the percentage of stained cells is recorded, `r er5$at_least_80[2]` of `r er5$n_pct_recorded[2]` (`r round(100 * er5$at_least_80[2] / er5$n_pct_recorded[2])`%) stain at least 80%, vs. `r round(100 * er5$at_least_80[1] / er5$n_pct_recorded[1])`% of luminal tumors; Fisher p = `r fp(er5$fisher_p_at_least_80[1])`), but among tumors staining at least 80% ESR1 is still lower (median `r f2(erf5$median80_low[1])` vs. `r f2(erf5$median80_lum[1])`; `r erf5$n80_low[1]` vs. `r erf5$n80_lum[1]` tumors; Wilcoxon p `r fpe(erf5$wilcox_p80[1])`), as is the ER-response score. Only `r er5$below_10[2]` of `r er5$n_pct_recorded[2]` recorded tumors stains below 10% (the ER-low range). Neither weak staining nor ER-low tumors explain the weak ER program.
+- **Higher:** myeloid and inflammatory genes (S100A8, S100A9, KYNU, FUT3, INAVA) and the collagenase MMP1.
+- **ERBB2:** slightly lower than in luminal tumors without adjustment (`r g5("ERBB2", "C1-C3", "Unadjusted")`, moderated t), and the gap halves and loses significance after purity adjustment (`r g5("ERBB2", "C1-C3", "Purity-adjusted")`). This fits dilution of ERBB2 mRNA by infiltrating cells (Section 3.2).
+- **Step 4 genes:** all 7 compact-model genes differ in the expected direction. Four (MMP1, VSTM2L, MAPT, BCL2) are significantly more than two-fold different by TREAT. KRT86 and TMEM45A have point estimates near or above two-fold but are not shown to exceed it by TREAT; JADE2 changes less. STARD3 does not differ.
+
+**Against C5 ERBB2-high, only the amplicon passes TREAT** **(Figure 10)**. All `r nde5("C5 ERBB2-high", "Unadjusted", FALSE)` genes are lower in C5 ERBB2-low and lie in the 17q12 amplicon (ERBB2, STARD3, PGAP3, GRB7, MIEN1 and others). No gene higher in C5 ERBB2-low passes TREAT. ESR1 is about three-fold higher by the moderated t-test (`r g5("ESR1", "C5 ERBB2-high", "Unadjusted")`), in line with more ER+ tumors (78% vs. 53%), but the Hallmark estrogen-response sets do not differ. The 7 compact-model genes barely differ between the two C5 groups.
+
+So the two Step 4 models capture separate axes. The 7 genes separate both C5 groups from luminal tumors, and only the amplicon separates the two C5 groups.
+
+```{r fig10, fig.cap = "**Figure 10.** Differential expression of C5 ERBB2-low vs. the luminal clusters C1–C3 (left) and vs. C5 ERBB2-high (right): unadjusted limma model, uncorrected VST. y-axis: BH-adjusted TREAT p for |log2 fold change| > 1, so genes with smaller changes sit at the baseline. Red/blue: BH p < 0.05; panel titles give the counts. Small labels: top 5 other genes in each direction by moderated t. Boxed labels: the 8 Step 4 compact-model genes (orange/purple: 7-gene model vs. C1–C3, colored by direction; green: STARD3, 1-gene model vs. C5 ERBB2-high) and ERBB2 (green).", out.width = "100%"}
+knitr::include_graphics(file.path(r50, "volcano.png"))
+```
+
+### 5.3 Pathways
+
+**Against the luminal clusters, low ER signalling is the firmest finding** **(Figure 11, Table S26)**.
+
+- **Camera-confirmed in both models:** early estrogen response is lower (unadjusted `r h5("C1-C3", "Unadjusted", "ESTROGEN_RESPONSE_EARLY")`; `r c5("C1-C3", "Unadjusted", "ESTROGEN_RESPONSE_EARLY")`). This is the only program confirmed with and without adjustment.
+- **Camera-confirmed only after purity adjustment:** glycolysis (`r h5("C1-C3", "Purity-adjusted", "GLYCOLYSIS")`; `r c5("C1-C3", "Purity-adjusted", "GLYCOLYSIS")`; unadjusted `r c5("C1-C3", "Unadjusted", "GLYCOLYSIS")`) and mTORC1 signalling. Like MYC targets below, glycolysis is rich in epithelial housekeeping genes (e.g. GAPDH, ENO1, LDHA) that a linear purity adjustment can inflate, so these are suggestive, not firm.
+- **Infiltration:** without adjustment, immune and stromal programs lead (allograft rejection `r h5("C1-C3", "Unadjusted", "ALLOGRAFT_REJECTION")`; IFN-γ response, inflammatory response, complement). They pass camera at the default setting but not the strict one, and drop out after purity adjustment. Section 5.4 measures the infiltrate directly.
+- **Proliferation and hypoxia:** E2F targets are higher in both models (unadjusted `r h5("C1-C3", "Unadjusted", "E2F_TARGETS")`, adjusted `r h5("C1-C3", "Purity-adjusted", "E2F_TARGETS")`), as is hypoxia (`r h5("C1-C3", "Unadjusted", "HYPOXIA")` and `r h5("C1-C3", "Purity-adjusted", "HYPOXIA")`). Both pass camera at the default setting but not the strict one: consistent in direction but not camera-confirmed, and modest relative to how much these programs vary between tumors. The comparator is weighted toward luminal A, while this group is mostly luminal B or HER2-enriched by PAM50, so higher proliferation partly reflects that subtype mix.
+- **Dependent on the adjustment:** MYC targets and oxidative phosphorylation become much stronger only after purity adjustment. They are heavy in epithelial and housekeeping genes, which a linear purity adjustment can inflate in impure tumors. EMT stays higher after adjustment, but so do fibroblasts (Section 5.4), so it most likely reflects stroma that the ESTIMATE terms do not fully remove, not a tumor-cell program.
+
+Together these point to a tumor that expresses ER protein but has a weak ER transcriptional program, with somewhat higher proliferation: features consistent with luminal B or HER2-enriched biology [4]. The stable Step 4 genes fall in the leading edges of these programs (e.g. BCL2, MAPT and PGR in estrogen response, TMEM45A in hypoxia, MMP1 in EMT) **(Table S27)**; this annotates the genes rather than adding independent evidence.
+
+**Against C5 ERBB2-high, more infiltration and less proliferation, but nothing camera-confirmed.** Unadjusted, immune and EMT programs are higher in C5 ERBB2-low (allograft rejection `r h5("C5 ERBB2-high", "Unadjusted", "ALLOGRAFT_REJECTION")`). In both models, proliferation (G2M checkpoint, adjusted `r h5("C5 ERBB2-high", "Purity-adjusted", "G2M_CHECKPOINT")`; E2F targets), MYC targets and mTORC1 are lower. These pass camera at the default setting only. Lower proliferation is consistent with the absence of HER2 amplification, but also with more ER+ tumors in this group, since ER+ tumors are less proliferative regardless of HER2.
+
+```{r fig11, fig.cap = "**Figure 11.** Hallmark GSEA (fgsea) of C5 ERBB2-low vs. C1–C3 (left) and vs. C5 ERBB2-high (right), from the unadjusted and the purity-adjusted (ESTIMATE stromal + immune) limma models. Color: NES (red = higher in C5 ERBB2-low). Size: −log10 BH-adjusted p. Faded: not significant (BH p ≥ 0.05). Shown: gene sets significant in at least one model, ordered by NES vs. C1–C3, unadjusted. fgsea p-values ignore inter-gene correlation; see Table S26 for the camera check.", out.width = "75%"}
+knitr::include_graphics(file.path(r50, "hallmark_nes.png"))
+```
+
+### 5.4 Immune infiltration
+
+**Against the luminal clusters, the group has more of most immune populations and more fibroblasts; relative to the ESTIMATE signal, monocytic-lineage and fibroblast markers are higher** **(Figure 12, Table 8)**.
+
+- **Amount:** T cells (`r m5("T cells", "C1-C3", "Unadjusted")`), CD8 T cells, cytotoxic lymphocytes, B cells, monocytic-lineage (monocyte/macrophage) markers (`r m5("Monocytic lineage", "C1-C3", "Unadjusted")`) and fibroblasts (`r m5("Fibroblasts", "C1-C3", "Unadjusted")`) are all higher; myeloid dendritic cells slightly higher and neutrophils slightly lower (NK cells: small differences on a weak score).
+- **Relative to the ESTIMATE signal:** monocytic-lineage markers (`r m5("Monocytic lineage", "C1-C3", "Purity-adjusted")`) and fibroblasts are higher. Endothelial cells, myeloid dendritic cells, B cells and neutrophils are lower, and T cells are in proportion.
+
+**Against C5 ERBB2-high, more of the same infiltrate.** T cells, CD8 T cells, cytotoxic lymphocytes, myeloid dendritic cells and fibroblasts are higher, but no population differs relative to the ESTIMATE signal.
+
+Among the luminal clusters, C2 is also heavily infiltrated, but with more endothelial and fewer monocytic-lineage markers **(Figure 12)**. Lymphocytic infiltration matters differently by subtype: in a pooled analysis of neoadjuvant chemotherapy trials, higher stromal tumor-infiltrating lymphocytes (TILs, scored on histology) in luminal HER2− tumors predicted more pathological complete responses but were linked to shorter overall survival, unlike the longer disease-free survival in HER2+ and triple-negative disease [22]. Bulk T-cell scores are only a proxy for TILs.
+
+```{r fig12, fig.cap = "**Figure 12.** MCP-counter immune and stromal cell scores (mean VST of each population's marker genes, z-scored across primary tumors) by group. Cluster colors as in Figure 6; C5 ERBB2-high in green, C5 ERBB2-low in light green. Scores compare abundance between tumors, not fractions within a tumor.", out.width = "100%"}
+knitr::include_graphics(file.path(r50, "mcp_counter.png"))
+```
+
+```{r tab8}
+mcp5 |> mutate(v = paste0(sprintf("%+.2f", diff), " (", fp(padj), ")"), col = paste(comparator, adjustment, sep = ", ")) |>
+  select(population, col, v) |> pivot_wider(names_from = col, values_from = v) |> left_join(mk5, by = "population") |>
+  select(Population = population, Markers = n_markers, `vs. C1–C3` = `C1-C3, Unadjusted`, `vs. C1–C3, adjusted` = `C1-C3, Purity-adjusted`,
+         `vs. C5 ERBB2-high` = `C5 ERBB2-high, Unadjusted`, `vs. C5 ERBB2-high, adjusted` = `C5 ERBB2-high, Purity-adjusted`) |>
+  knitr::kable(caption = "**Table 8.** MCP-counter immune and stromal cell scores in C5 ERBB2-low vs. each comparator: $\\beta_1$ of the linear model in Section 5.1, in VST units (Figure 12 shows z-scores), positive = higher in C5 ERBB2-low; HC3 robust standard errors, BH-adjusted p in parentheses (20 tests per model). Adjusted: with ESTIMATE stromal and immune scores, i.e. relative to the ESTIMATE signal. Markers: marker genes present per population.")
+```
+
+### 5.5 Comparison with matched normal tissue
+
+**The Step 4 genes also differ from matched normal tissue** **(Figure 13)**. Across the `r n_distinct(pairs51$patient_id)` pairs, `r nde(de51, TRUE)` genes are more than two-fold higher and `r nde(de51, FALSE)` more than two-fold lower in tumor by TREAT. The largest changes are the usual tumor–normal ones: tumor-stroma genes up (MMP11, COL11A1, COL10A1, COMP) and normal breast genes down (LIFR, NDRG2).
+
+- **Step 4 genes:** all 7 compact-model genes move the same way against normal tissue as against luminal tumors **(Table S28)**. Six are significant by the moderated t-test (e.g. MMP1 `r k51("MMP1")`, BCL2 `r k51("BCL2")`; KRT86 is not), but only MMP1 passes the two-fold TREAT threshold with 11 pairs. These genes differ from adjacent normal tissue in tumor cells or their stroma; bulk RNA cannot say which. This comparison does not show that the changes are specific to this group: many breast tumors raise MMP1 and lower BCL2 relative to normal tissue (Section 5.1, Not done).
+- **Amplicon:** ERBB2 (`r k51("ERBB2")`) and STARD3 are only slightly above normal tissue, as expected without amplification.
+- **Pathways:** proliferation is the strongest tumor program (E2F targets, NES `r sg(gs51$NES[gs51$pathway == "E2F_TARGETS"])`), with MYC targets, mTORC1, glycolysis, interferon responses and EMT higher, and adipogenesis lower, reflecting fat-rich normal tissue **(Figure S9)**. These pass camera at the default setting; with 11 pairs, none passes the strict setting. TNF-α/NF-κB signalling is lower in tumor, in line with stress and inflammatory responses in adjacent normal tissue [23].
+- **Immune and stromal cells:** fibroblasts are higher in tumor, and endothelial cells, NK cells and neutrophils lower **(Table S29)**. T cells, CD8 T cells and B cells show no detectable difference, with wide confidence intervals. Adjacent normal tissue is itself altered and often inflamed, so it is not a clean baseline for immune comparisons.
+
+```{r fig13, fig.cap = "**Figure 13.** Differential expression of the 11 C5 ERBB2-low tumors vs. their matched adjacent normal tissue (paired limma, uncorrected VST). y-axis: BH-adjusted TREAT p for |log2 fold change| > 1. Red/blue: BH p < 0.05. Small labels: top 8 other genes in each direction by moderated t. Boxed labels as in Figure 10.", out.width = "70%"}
+knitr::include_graphics(file.path(r51, "volcano.png"))
+```
+
+### 5.6 Implications
+
+The C5 ERBB2-low group is mostly ER+ by IHC, rarely ER-low where staining is recorded (`r er5$below_10[2]` of `r er5$n_pct_recorded[2]`), yet has a weak ER transcriptional program; this is its firmest feature, confirmed with and without purity adjustment. It is somewhat more proliferative than the luminal-A-weighted luminal clusters, less proliferative than amplified tumors, and heavily infiltrated, with more monocytic-lineage and fibroblast signal than luminal tumors. It has no HER2 amplicon and no HER2-specific expression program; 31 of its 34 scored HER2− tumors are HER2-low, a rate likely inflated by how TCGA recorded IHC (Section 3.2).
+
+For HER2-directed ADCs (untested here):
+
+- **Bulk ERBB2 mRNA slightly understates HER2 in these tumors.** Infiltrating cells dilute bulk ERBB2 mRNA (about 20% lower than in luminal tumors; after purity adjustment the gap halves and is no longer significant), not HER2 per tumor cell. This matters only near an mRNA cut-off, and mRNA is not a validated substitute for IHC (Supplement S7).
+- **Eligibility does not depend on high ERBB2.** Trastuzumab deruxtecan benefits patients with HER2-low [10] and HER2-ultralow [11] disease, and in preclinical models of mixed HER2 expression its payload also kills neighbouring HER2-negative cells [24].
+- **Immune effects are not established in patients.** In one mouse model (colon carcinoma cells engineered to express human HER2), trastuzumab deruxtecan increased antitumor immunity and worked better with anti-PD-1 [25]. Whether a heavily infiltrated HER2-low tumor responds differently in patients is not known.
+
+The group's weak ER program may also matter for endocrine therapy. In HR+/HER2− advanced disease treated with endocrine therapy with or without ribociclib, PAM50 HER2-enriched tumors (27 of 83 here) had a higher risk of progression than luminal A tumors (only the rare basal-like subtype did worse), but also the largest benefit from adding ribociclib [26].
+
+These results are associations in bulk RNA. They do not show what causes the group's state, which cells express each gene, or whether the group predicts ADC benefit.
+
 # Supplement
 
 ## S1. QC and PC summary
@@ -533,7 +679,7 @@ read_csv(file.path(r21, "clinical_interactions.csv")) |>
   - **IHC 1+ vs. 0 (the harder clinical split):** RNA still leads (0.652 vs. 0.554, p = 0.008; CV BH-adjusted p = 0.03).
   - **Model:** the RNA logistic model with HER2-low as the outcome gives $\beta_1$ = `r sprintf("%.2f", b("HER2-low: RNA", "ERBB2"))` (Table S10).
   - **Not just ER biology:** HER2-low is enriched in HR+ disease [17], so RNA could be riding on ER biology. It still leads within ER+ tumors (0.655 vs. 0.559, p = 0.04) and in CV models that include ER (+0.13, BH-adjusted p = 0.03).
-  - **Ceiling:** pathologists agree poorly on IHC 0 vs. 1+ [22], which caps any predictor of this split.
+  - **Ceiling:** pathologists agree poorly on IHC 0 vs. 1+ [27], which caps any predictor of this split.
   - **Ultralow:** TCGA "IHC 0" probably includes HER2-ultralow tumors (faint staining below 1+). These are now also eligible for trastuzumab deruxtecan in HR+ disease [11], so for HR+ tumors the treatment decision now lies below IHC 0 vs. 1+.
 
 **Combining predictors.** In CV logistic models (Table S11, Table S12), each step below leaves the AUC not significantly changed (all BH-adjusted p ≥ 0.22):
@@ -550,7 +696,7 @@ read_csv(file.path(r21, "clinical_interactions.csv")) |>
 
 - **The label matters.** The main label is IHC, a protein readout, which an mRNA measure tracks more directly than copy number. The FISH-resolved clinical status partly favors copy number instead, and there DNA does not beat RNA either. FISH itself could not be a predictor without leaking the label.
 - **The scales differ.** mRNA is continuous, while GISTIC has five levels.
-- **mRNA is not a validated substitute.** A commercial ERBB2 mRNA assay (Oncotype DX) missed some IHC/FISH-positive tumors [23], so mRNA alone is not a validated substitute for IHC/FISH.
+- **mRNA is not a validated substitute.** A commercial ERBB2 mRNA assay (Oncotype DX) missed some IHC/FISH-positive tumors [28], so mRNA alone is not a validated substitute for IHC/FISH.
 
 ## S8. Logistic models and cross-validation
 
@@ -808,6 +954,88 @@ sens4 |> transmute(`C5 ERBB2-low vs.` = comparator, Model = model, `Genes (main)
   knitr::kable(caption = "**Table S25.** Sensitivity of elastic net gene selection (full-data fits, same inner folds) to the covariates. Main model: purity unpenalized. Jaccard: shared genes / all genes selected by either model.")
 ```
 
+## S14. Differential expression, pathways and normal tissue: details
+
+**camera check of the Hallmark results** **(Table S26)**.
+
+```{r camcount, include = FALSE}
+camn <- gs5 |> filter(collection == "Hallmark") |> select(comparator, adjustment, pathway, padj) |>
+  left_join(cam5 |> pivot_wider(id_cols = c(comparator, adjustment, pathway), names_from = correlation, values_from = FDR),
+            by = c("comparator", "adjustment", "pathway")) |>
+  group_by(comparator, adjustment) |> summarise(f = sum(padj < 0.05), d = sum(Default < 0.05), e = sum(Estimated < 0.05), .groups = "drop")
+cn <- \(c, a, k) camn[[k]][camn$comparator == c & camn$adjustment == a]
+```
+
+Of the 50 Hallmark sets, fgsea calls `r cn("C1-C3", "Unadjusted", "f")` (unadjusted) and `r cn("C1-C3", "Purity-adjusted", "f")` (purity-adjusted) significant vs. C1–C3, and `r cn("C5 ERBB2-high", "Unadjusted", "f")` and `r cn("C5 ERBB2-high", "Purity-adjusted", "f")` vs. C5 ERBB2-high. camera with the default correlation keeps `r cn("C1-C3", "Unadjusted", "d")`, `r cn("C1-C3", "Purity-adjusted", "d")`, `r cn("C5 ERBB2-high", "Unadjusted", "d")` and `r cn("C5 ERBB2-high", "Purity-adjusted", "d")`; with the estimated correlation, `r cn("C1-C3", "Unadjusted", "e")`, `r cn("C1-C3", "Purity-adjusted", "e")`, `r cn("C5 ERBB2-high", "Unadjusted", "e")` and `r cn("C5 ERBB2-high", "Purity-adjusted", "e")`. Estimated correlations are high for strongly co-expressed programs (vs. C1–C3, unadjusted: E2F targets `r f2(cam5$Correlation[cam5$correlation == "Estimated" & cam5$comparator == "C1-C3" & cam5$adjustment == "Unadjusted" & cam5$pathway == "E2F_TARGETS"])`, allograft rejection `r f2(cam5$Correlation[cam5$correlation == "Estimated" & cam5$comparator == "C1-C3" & cam5$adjustment == "Unadjusted" & cam5$pathway == "ALLOGRAFT_REJECTION"])`, vs. `r f2(cam5$Correlation[cam5$correlation == "Estimated" & cam5$comparator == "C1-C3" & cam5$adjustment == "Unadjusted" & cam5$pathway == "ESTROGEN_RESPONSE_EARLY"])` for early estrogen response), which shrinks their effective number of genes. With the strict setting, only early estrogen response (both models), glycolysis and mTORC1 signalling (purity-adjusted) remain significant vs. C1–C3, and nothing vs. C5 ERBB2-high. The default setting keeps most fgsea results.
+
+**Step 4 genes in pathway leading edges.** For each significant Hallmark set (unadjusted model), the leading edge is the subset of its genes that drives the enrichment. Stable Step 4 genes (selected in ≥70% of training sets) fall in the leading edges of `r sum(le5$comparator == "C1-C3")` sets vs. C1–C3, and only PSMD3 (an amplicon gene, in MYC targets) vs. C5 ERBB2-high **(Table S27)**. Strongly differential genes almost always sit in leading edges, so this annotates the genes rather than adding evidence.
+
+**The 8 key genes across comparisons** **(Table S28)**. The 7 compact-model genes differ from luminal tumors but barely from C5 ERBB2-high; ERBB2 and STARD3 do the reverse. Against matched normal tissue, all 7 move as they do against luminal tumors.
+
+**Reactome** **(Table S30)**.
+
+- **vs. C1–C3:** unadjusted, the top pathways are immune: neutrophil degranulation, lymphoid–non-lymphoid immunoregulatory interactions, interleukin signalling and antigen cross-presentation. After purity adjustment, they are translation, respiratory electron transport and DNA replication, the finer form of the Hallmark proliferation and metabolism sets. Estrogen-dependent gene expression is lower in both models.
+- **vs. C5 ERBB2-high:** cell-cycle checkpoints, M phase and DNA replication are lower in both models; immune pathways (including IL-10 and IL-4/IL-13 signalling) are higher only without adjustment.
+
+Reactome results use fgsea only and share its inflated p-values.
+
+**Tumor vs. matched normal tissue.** `r sum(table(pairs51$patient_id, pairs51$plate) == 2)` of the `r n_distinct(pairs51$patient_id)` pairs were sequenced on the same plate. The tumors come from sites BH (6), E9 (4) and GI (1), and their PAM50 mix is similar to the rest of the group. Normal samples come almost entirely from the early processing era (Section 1.3), so plate and era effects are partly paired out but not removed. Pathways are in **(Figure S9)** and paired immune and stromal cell scores in **(Table S29)**.
+
+```{r figS9, fig.cap = "**Figure S9.** Hallmark GSEA (fgsea) of the 11 C5 ERBB2-low tumors vs. matched adjacent normal tissue (paired limma, moderated t). Shown: gene sets with BH-adjusted p < 0.05. Red: higher in tumor.", out.width = "55%"}
+knitr::include_graphics(file.path(r51, "hallmark_nes.png"))
+```
+
+```{r tabS26}
+key_sets <- c("ESTROGEN_RESPONSE_EARLY", "ESTROGEN_RESPONSE_LATE", "GLYCOLYSIS", "MTORC1_SIGNALING", "E2F_TARGETS", "G2M_CHECKPOINT",
+              "MYC_TARGETS_V1", "OXIDATIVE_PHOSPHORYLATION", "HYPOXIA", "EPITHELIAL_MESENCHYMAL_TRANSITION", "ALLOGRAFT_REJECTION",
+              "INTERFERON_GAMMA_RESPONSE")
+gs5 |> filter(collection == "Hallmark", pathway %in% key_sets) |> select(comparator, adjustment, pathway, NES, padj) |>
+  left_join(cam5 |> mutate(v = paste0(Direction, " (", fp(FDR), ")")) |>
+              pivot_wider(id_cols = c(comparator, adjustment, pathway), names_from = correlation, values_from = v),
+            by = c("comparator", "adjustment", "pathway")) |>
+  mutate(comparator = factor(comparator, c("C1-C3", "C5 ERBB2-high")), adjustment = factor(adjustment, c("Unadjusted", "Purity-adjusted")),
+         pathway = factor(pathway, key_sets)) |> arrange(comparator, adjustment, pathway) |>
+  transmute(`C5 ERBB2-low vs.` = comparator, Model = adjustment, `Hallmark set` = pathway,
+            `fgsea NES (BH p)` = paste0(f2(NES), " (", fp(padj), ")"), `camera, default (FDR)` = Default, `camera, estimated (FDR)` = Estimated) |>
+  knitr::kable(caption = "**Table S26.** Hallmark sets discussed in Section 5.3: fgsea NES (positive = higher in C5 ERBB2-low) with BH-adjusted p, and camera direction with FDR, using limma's default inter-gene correlation (0.01) or each set's estimated correlation (strict). Same limma design and contrasts as Section 5.1.")
+```
+
+```{r tabS27}
+le5 |> mutate(comparator = factor(comparator, c("C1-C3", "C5 ERBB2-high"))) |> arrange(comparator, -NES) |>
+  transmute(`C5 ERBB2-low vs.` = comparator, `Hallmark set` = pathway, NES = f2(NES), `p (BH)` = fp(padj),
+            `Stable Step 4 genes in leading edge` = str_replace_all(stable_genes, ";", ", ")) |>
+  knitr::kable(caption = "**Table S27.** Significant Hallmark sets (fgsea, unadjusted model, BH p < 0.05) whose leading edge contains stable Step 4 genes (selected in ≥70% of training sets, Table S20) of the same contrast. NES: positive = higher in C5 ERBB2-low.")
+```
+
+```{r tabS28}
+lfc <- \(fc, p, tp) paste0(sprintf("%+.2f", fc), " (", fp(p), "; ", fp(tp), ")")
+de5 |> filter(adjustment == "Unadjusted", gene %in% key51$gene) |> transmute(gene, comparator, v = lfc(logFC, adj.P.Val, treat_padj)) |>
+  pivot_wider(names_from = comparator, values_from = v) |>
+  right_join(key51 |> transmute(gene, model = if_else(is.na(comparator), "–", paste("vs.", comparator)),
+                                normal = lfc(logFC, adj.P.Val, treat_padj), logFC), by = "gene") |>
+  arrange(model == "–", model, -logFC) |>
+  select(Gene = gene, `Step 4 model` = model, `vs. C1–C3` = `C1-C3`, `vs. C5 ERBB2-high` = `C5 ERBB2-high`, `Tumor vs. matched normal` = normal) |>
+  knitr::kable(caption = "**Table S28.** The 8 Step 4 compact-model genes and ERBB2: log2 fold change of C5 ERBB2-low vs. C1–C3 and vs. C5 ERBB2-high (unadjusted limma), and of C5 ERBB2-low tumors vs. matched adjacent normal (paired limma, 11 pairs). In parentheses: BH-adjusted p of the moderated t-test (any difference); BH-adjusted TREAT p (|log2 fold change| > 1). Step 4 model: the compact model each gene belongs to (ERBB2 shown for reference).")
+```
+
+```{r tabS29}
+mcp51 |> transmute(Population = population, `Median, normal` = f2(median_normal), `Median, tumor` = f2(median_tumor),
+                   `Mean difference (95% CI)` = paste0(sprintf("%+.2f", mean_diff), " (", sprintf("%.2f", lo), " to ", sprintf("%.2f", hi), ")"),
+                   p = fp(p), `p (BH)` = fp(padj)) |>
+  knitr::kable(caption = "**Table S29.** MCP-counter cell scores (mean VST of marker genes) in the 11 C5 ERBB2-low tumors and their matched adjacent normal tissue. Mean difference: tumor minus normal, with 95% CI; paired t-test, BH-adjusted across the 10 populations.")
+```
+
+```{r tabS30}
+gs5 |> filter(collection == "Reactome", padj < 0.05) |>
+  mutate(comparator = factor(comparator, c("C1-C3", "C5 ERBB2-high")), adjustment = factor(adjustment, c("Unadjusted", "Purity-adjusted")),
+         dir = NES > 0) |>
+  group_by(comparator, adjustment, dir) |> slice_min(pval, n = 5, with_ties = FALSE) |> ungroup() |>
+  arrange(comparator, adjustment, -NES) |>
+  transmute(`C5 ERBB2-low vs.` = comparator, Model = adjustment,
+            Pathway = str_to_sentence(str_replace_all(pathway, "_", " ")), NES = f2(NES), `p (BH)` = fp(padj)) |>
+  knitr::kable(caption = "**Table S30.** Top Reactome pathways (fgsea; 5 most significant in each direction, BH p < 0.05) per contrast and limma model. NES: positive = higher in C5 ERBB2-low. Pathway names lower-cased from MSigDB. fgsea p-values ignore inter-gene correlation (Table S26).")
+```
+
 # References
 
 1. Cancer Genome Atlas Network. Comprehensive molecular portraits of human breast tumours. *Nature* 2012;490:61–70. PMID 23000897. DOI: [10.1038/nature11412](https://doi.org/10.1038/nature11412).
@@ -831,8 +1059,13 @@ sens4 |> transmute(`C5 ERBB2-low vs.` = comparator, Model = model, `Genes (main)
 19. Cejalvo JM, et al. Intrinsic subtypes and gene expression profiles in primary and metastatic breast cancer. *Cancer Res* 2017;77:2213–2221. PMID 28249905. DOI: [10.1158/0008-5472.CAN-16-2717](https://doi.org/10.1158/0008-5472.CAN-16-2717).
 20. Prat A, et al. Prognostic value of intrinsic subtypes in hormone receptor-positive metastatic breast cancer treated with letrozole with or without lapatinib. *JAMA Oncol* 2016;2:1287–1294. PMID 27281556. DOI: [10.1001/jamaoncol.2016.0922](https://doi.org/10.1001/jamaoncol.2016.0922).
 21. Mosele F, et al. Trastuzumab deruxtecan in metastatic breast cancer with variable HER2 expression: the phase 2 DAISY trial. *Nat Med* 2023;29:2110–2120. PMID 37488289. DOI: [10.1038/s41591-023-02478-2](https://doi.org/10.1038/s41591-023-02478-2).
-22. Fernandez AI, et al. Examination of low ERBB2 protein expression in breast cancer tissue. *JAMA Oncol* 2022;8:607–610. PMID 35113160. DOI: [10.1001/jamaoncol.2021.7239](https://doi.org/10.1001/jamaoncol.2021.7239).
-23. Dabbs DJ, et al. High false-negative rate of HER2 quantitative reverse transcription polymerase chain reaction of the Oncotype DX test: an independent quality assurance study. *J Clin Oncol* 2011;29:4279–4285. PMID 21990395. DOI: [10.1200/JCO.2011.34.7963](https://doi.org/10.1200/JCO.2011.34.7963).
+22. Denkert C, et al. Tumour-infiltrating lymphocytes and prognosis in different subtypes of breast cancer: a pooled analysis of 3771 patients treated with neoadjuvant therapy. *Lancet Oncol* 2018;19:40–50. PMID 29233559. DOI: [10.1016/S1470-2045(17)30904-X](https://doi.org/10.1016/S1470-2045(17)30904-X).
+23. Aran D, et al. Comprehensive analysis of normal adjacent to tumor transcriptomes. *Nat Commun* 2017;8:1077. PMID 29057876. DOI: [10.1038/s41467-017-01027-z](https://doi.org/10.1038/s41467-017-01027-z).
+24. Ogitani Y, et al. Bystander killing effect of DS-8201a, a novel anti-human epidermal growth factor receptor 2 antibody-drug conjugate, in tumors with human epidermal growth factor receptor 2 heterogeneity. *Cancer Sci* 2016;107:1039–1046. PMID 27166974. DOI: [10.1111/cas.12966](https://doi.org/10.1111/cas.12966).
+25. Iwata TN, et al. A HER2-targeting antibody-drug conjugate, trastuzumab deruxtecan (DS-8201a), enhances antitumor immunity in a mouse model. *Mol Cancer Ther* 2018;17:1494–1503. PMID 29703841. DOI: [10.1158/1535-7163.MCT-17-0749](https://doi.org/10.1158/1535-7163.MCT-17-0749).
+26. Prat A, et al. Correlative biomarker analysis of intrinsic subtypes and efficacy across the MONALEESA phase III studies. *J Clin Oncol* 2021;39:1458–1467. PMID 33769862. DOI: [10.1200/JCO.20.02977](https://doi.org/10.1200/JCO.20.02977).
+27. Fernandez AI, et al. Examination of low ERBB2 protein expression in breast cancer tissue. *JAMA Oncol* 2022;8:607–610. PMID 35113160. DOI: [10.1001/jamaoncol.2021.7239](https://doi.org/10.1001/jamaoncol.2021.7239).
+28. Dabbs DJ, et al. High false-negative rate of HER2 quantitative reverse transcription polymerase chain reaction of the Oncotype DX test: an independent quality assurance study. *J Clin Oncol* 2011;29:4279–4285. PMID 21990395. DOI: [10.1200/JCO.2011.34.7963](https://doi.org/10.1200/JCO.2011.34.7963).
 
 ```{=html}
 <!-- Cross-references: in-text (Figure/Table X) citations link to the item; captions link back to each citation -->
