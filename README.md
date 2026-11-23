@@ -54,15 +54,15 @@ Run from repo root (`Rscript analyses/<script>.R`); outputs go to `results/<scri
 - ESTIMATE score (`estimate_score`, higher = lower purity) is available per tumor for Steps 3–5.
 
 **Report state (continue numbering from here)**
-- Main: Sections 1–5; Figures 1–13; Tables 1–8. Next: Figure 14, Table 9.
-- Supplement: Sections S1–S14; Figures S1–S9; Tables S1–S29. Next: S15, Figure S10, Table S30.
+- Restructured after Step 5: Key findings box (client-style bullets, ~180 words, no citations; CSS class .key-findings) at top; Main Sections 1–6 (5.5 = matched normal, PI: critical; 6 = Conclusions, the single implications section); Figures 1–12; Tables 1–4.
+- Supplement: Sections S1–S14 (S14 = matched-normal pair details); Figures S1–S10; Tables S1–S31. Supplementary items are numbered in Supplement order (main-text items in citation order). Removed: old plate small-sample table, luminal profile table, leading-edge table, Reactome table.
 - References [1]–[28], numbered by first citation in the whole document (main then supplement). After moving text, renumber by first appearance.
 - Model inline values come from `results/02.1_rna_vs_dna/model_coefficients.csv` via `b(model, term)` in the setup chunk; Step 3 and 4 values are read from `results/03.0_pam_clusters/*.csv` and `results/04.0_c5_low_enet/*.csv` in the setup chunk.
 - Figure colors (Step 3 on): PAM clusters C1–C5 = Dark2 (teal, orange, lavender, magenta, green); PAM50 = browns/yellow/plum/aqua; ERBB2 GISTIC = blue–red (NA white). Reuse these in later steps.
 
 **Step 3 findings to carry forward**
 - C5 ERBB2-low group (non-amplified, mostly HER2-low among scored HER2−, 78% ER+) is the least pure group: median ESTIMATE 675 vs 9 in ERBB2-high, with high stromal and immune markers (Table 6); ERBB2 mRNA diluted by infiltration (ρ = −0.30), but the purest third is still at luminal ERBB2 level, and IHC is mostly 1+/2+.
-- Possible amplified-but-diluted tumors in C5 ERBB2-low: TCGA-C8-A26X-01 (GISTIC 2, IHC 1+, called HER2−: re-testing candidate), TCGA-C8-A138-01 and TCGA-C8-A1HL-01 (GISTIC 2, IHC 2+, no FISH: unresolved). Not yet in the report.
+- Possible amplified-but-diluted tumors in C5 ERBB2-low: TCGA-C8-A26X-01 (GISTIC 2, IHC 1+, called HER2−: re-testing candidate), TCGA-C8-A138-01 and TCGA-C8-A1HL-01 (GISTIC 2, IHC 2+, no FISH: unresolved). In report Section 3.2 and Table S15 (all 19 amplified tumors without a HER2+ call).
 
 **Step 4 findings to carry forward**
 - C5 ERBB2-low vs C5 ERBB2-high: the 17q12 amplicon is sufficient (STARD3 top gene in 94% of training sets; 1-gene CV AUC 0.996). This is near-circular (C5 split on ERBB2 mRNA). Non-amplicon stable genes = what adds beyond the amplicon only, not all differences (ER, infiltration also differ) -> Step 5 limma.
